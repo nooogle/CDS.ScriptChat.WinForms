@@ -13,9 +13,14 @@ partial class ScriptChatPanel
     /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
     protected override void Dispose(bool disposing)
     {
-        if (disposing && (components != null))
+        if (disposing)
         {
-            components.Dispose();
+            components?.Dispose();
+
+            // Only set when Configure built the client; an attached session's client belongs
+            // to the caller.
+            _ownedChatClient?.Dispose();
+            _ownedChatClient = null;
         }
 
         base.Dispose(disposing);

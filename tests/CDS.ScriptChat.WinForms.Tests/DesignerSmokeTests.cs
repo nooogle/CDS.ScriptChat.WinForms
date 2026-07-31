@@ -107,30 +107,51 @@ public sealed class DesignerSmokeTests
     }
 
     [TestMethod]
-    public void ChatTurnView_ProposedCodeWithBareLineFeeds_NormalisesThemForWinForms()
+    public void ChatTurnView_ProposalWithNoBaseline_ShowsTheProposedCodeInFull()
     {
         using var view = new ChatTurnView();
 
-        view.Bind(new ChatTurn(
-            ChatTurnRole.Assistant,
-            null,
-            "line one\nline two",
-            "Two lines",
-            EditDisposition.PendingReview));
+        view.Bind(
+            new ChatTurn(ChatTurnRole.Assistant, null, "line one\nline two", "Two lines", EditDisposition.PendingReview),
+            baselineScript: null);
 
-        var codeBox = FindCodeTextBox(view);
-        codeBox.Text.Should().Be("line one\r\nline two");
-        codeBox.Visible.Should().BeTrue();
+        var diffBox = FindDiffTextBox(view);
+        diffBox.Lines.Should().Equal("line one", "line two");
+        diffBox.Visible.Should().BeTrue();
     }
 
     [TestMethod]
-    public void ChatTurnView_TurnWithNoProposedCode_HidesTheCodeBox()
+    public void ChatTurnView_ProposalWithBaseline_RendersMarkedUpDiffLines()
+    {
+        using var view = new ChatTurnView();
+
+        view.Bind(
+            new ChatTurn(ChatTurnRole.Assistant, null, "one\ntwo", "Add a line", EditDisposition.PendingReview),
+            baselineScript: "one");
+
+        FindDiffTextBox(view).Lines.Should().Contain("  one").And.Contain("+ two");
+    }
+
+    [TestMethod]
+    public void ChatTurnView_ProposalIdenticalToTheCurrentScript_SaysSoRatherThanShowingAnEmptyDiff()
+    {
+        using var view = new ChatTurnView();
+
+        view.Bind(
+            new ChatTurn(ChatTurnRole.Assistant, null, "one", "No-op", EditDisposition.PendingReview),
+            baselineScript: "one");
+
+        FindDiffTextBox(view).Text.Should().Contain("identical");
+    }
+
+    [TestMethod]
+    public void ChatTurnView_TurnWithNoProposedCode_HidesTheDiffBox()
     {
         using var view = new ChatTurnView();
 
         view.Bind(new ChatTurn(ChatTurnRole.Assistant, "Just an answer.", null, null, EditDisposition.None));
 
-        FindCodeTextBox(view).Visible.Should().BeFalse();
+        FindDiffTextBox(view).Visible.Should().BeFalse();
     }
 
     [TestMethod]
@@ -146,6 +167,6 @@ public sealed class DesignerSmokeTests
     private static FlowLayoutPanel FindTranscript(ScriptChatPanel panel) =>
         panel.Controls.Find("_transcriptPanel", searchAllChildren: true).OfType<FlowLayoutPanel>().Single();
 
-    private static TextBox FindCodeTextBox(ChatTurnView view) =>
-        view.Controls.Find("_codeTextBox", searchAllChildren: true).OfType<TextBox>().Single();
+    private static RichTextBox FindDiffTextBox(ChatTurnView view) =>
+        view.Controls.Find("_diffTextBox", searchAllChildren: true).OfType<RichTextBox>().Single();
 }

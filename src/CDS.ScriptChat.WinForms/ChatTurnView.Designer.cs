@@ -32,8 +32,12 @@ partial class ChatTurnView
         _layout = new System.Windows.Forms.TableLayoutPanel();
         _roleLabel = new System.Windows.Forms.Label();
         _messageLabel = new System.Windows.Forms.Label();
-        _codeTextBox = new System.Windows.Forms.TextBox();
+        _diffTextBox = new System.Windows.Forms.RichTextBox();
+        _actionsPanel = new System.Windows.Forms.FlowLayoutPanel();
+        _acceptButton = new System.Windows.Forms.Button();
+        _rejectButton = new System.Windows.Forms.Button();
         _layout.SuspendLayout();
+        _actionsPanel.SuspendLayout();
         SuspendLayout();
         //
         // _layout
@@ -44,13 +48,15 @@ partial class ChatTurnView
         _layout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
         _layout.Controls.Add(_roleLabel, 0, 0);
         _layout.Controls.Add(_messageLabel, 0, 1);
-        _layout.Controls.Add(_codeTextBox, 0, 2);
+        _layout.Controls.Add(_diffTextBox, 0, 2);
+        _layout.Controls.Add(_actionsPanel, 0, 3);
         _layout.Dock = System.Windows.Forms.DockStyle.Top;
         _layout.Location = new System.Drawing.Point(0, 0);
         _layout.Margin = new System.Windows.Forms.Padding(0);
         _layout.Name = "_layout";
         _layout.Padding = new System.Windows.Forms.Padding(8);
-        _layout.RowCount = 3;
+        _layout.RowCount = 4;
+        _layout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.AutoSize));
         _layout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.AutoSize));
         _layout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.AutoSize));
         _layout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.AutoSize));
@@ -78,20 +84,60 @@ partial class ChatTurnView
         _messageLabel.Size = new System.Drawing.Size(0, 15);
         _messageLabel.TabIndex = 1;
         //
-        // _codeTextBox
+        // _diffTextBox
         //
-        _codeTextBox.BackColor = System.Drawing.SystemColors.Window;
-        _codeTextBox.Font = new System.Drawing.Font("Cascadia Mono", 9F);
-        _codeTextBox.Location = new System.Drawing.Point(8, 46);
-        _codeTextBox.Margin = new System.Windows.Forms.Padding(0);
-        _codeTextBox.Multiline = true;
-        _codeTextBox.Name = "_codeTextBox";
-        _codeTextBox.ReadOnly = true;
-        _codeTextBox.ScrollBars = System.Windows.Forms.ScrollBars.Both;
-        _codeTextBox.Size = new System.Drawing.Size(384, 160);
-        _codeTextBox.TabIndex = 2;
-        _codeTextBox.Visible = false;
-        _codeTextBox.WordWrap = false;
+        _diffTextBox.BackColor = System.Drawing.SystemColors.Window;
+        _diffTextBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+        _diffTextBox.DetectUrls = false;
+        _diffTextBox.Font = new System.Drawing.Font("Cascadia Mono", 9F);
+        _diffTextBox.Location = new System.Drawing.Point(8, 46);
+        _diffTextBox.Margin = new System.Windows.Forms.Padding(0, 0, 0, 4);
+        _diffTextBox.Name = "_diffTextBox";
+        _diffTextBox.ReadOnly = true;
+        _diffTextBox.ScrollBars = System.Windows.Forms.RichTextBoxScrollBars.Both;
+        _diffTextBox.Size = new System.Drawing.Size(384, 200);
+        _diffTextBox.TabIndex = 2;
+        _diffTextBox.Text = "";
+        _diffTextBox.Visible = false;
+        _diffTextBox.WordWrap = false;
+        //
+        // _actionsPanel
+        //
+        _actionsPanel.AutoSize = true;
+        _actionsPanel.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
+        _actionsPanel.Controls.Add(_acceptButton);
+        _actionsPanel.Controls.Add(_rejectButton);
+        _actionsPanel.Location = new System.Drawing.Point(8, 250);
+        _actionsPanel.Margin = new System.Windows.Forms.Padding(0);
+        _actionsPanel.Name = "_actionsPanel";
+        _actionsPanel.Size = new System.Drawing.Size(160, 29);
+        _actionsPanel.TabIndex = 3;
+        _actionsPanel.Visible = false;
+        _actionsPanel.WrapContents = false;
+        //
+        // _acceptButton
+        //
+        _acceptButton.AutoSize = true;
+        _acceptButton.Location = new System.Drawing.Point(0, 3);
+        _acceptButton.Margin = new System.Windows.Forms.Padding(0, 3, 6, 3);
+        _acceptButton.Name = "_acceptButton";
+        _acceptButton.Size = new System.Drawing.Size(75, 25);
+        _acceptButton.TabIndex = 0;
+        _acceptButton.Text = "Accept";
+        _acceptButton.UseVisualStyleBackColor = true;
+        _acceptButton.Click += OnAcceptButtonClick;
+        //
+        // _rejectButton
+        //
+        _rejectButton.AutoSize = true;
+        _rejectButton.Location = new System.Drawing.Point(81, 3);
+        _rejectButton.Margin = new System.Windows.Forms.Padding(0, 3, 0, 3);
+        _rejectButton.Name = "_rejectButton";
+        _rejectButton.Size = new System.Drawing.Size(75, 25);
+        _rejectButton.TabIndex = 1;
+        _rejectButton.Text = "Reject";
+        _rejectButton.UseVisualStyleBackColor = true;
+        _rejectButton.Click += OnRejectButtonClick;
         //
         // ChatTurnView
         //
@@ -105,6 +151,8 @@ partial class ChatTurnView
         Size = new System.Drawing.Size(400, 68);
         _layout.ResumeLayout(false);
         _layout.PerformLayout();
+        _actionsPanel.ResumeLayout(false);
+        _actionsPanel.PerformLayout();
         ResumeLayout(false);
         PerformLayout();
     }
@@ -114,5 +162,8 @@ partial class ChatTurnView
     private System.Windows.Forms.TableLayoutPanel _layout;
     private System.Windows.Forms.Label _roleLabel;
     private System.Windows.Forms.Label _messageLabel;
-    private System.Windows.Forms.TextBox _codeTextBox;
+    private System.Windows.Forms.RichTextBox _diffTextBox;
+    private System.Windows.Forms.FlowLayoutPanel _actionsPanel;
+    private System.Windows.Forms.Button _acceptButton;
+    private System.Windows.Forms.Button _rejectButton;
 }

@@ -27,6 +27,14 @@ public sealed class ScriptChatSession
     private readonly ScriptChatSessionOptions _options;
     private readonly List<ChatMessage> _history = [];
     private readonly List<ChatTurn> _turns = [];
+
+    /// <summary>
+    /// The script as it stood when each turn was sent, parallel to <see cref="_turns"/>. Kept
+    /// here rather than on <see cref="ChatTurn"/> so a proposal can still be rendered as a diff
+    /// after the transcript is reloaded into a fresh panel.
+    /// </summary>
+    private readonly List<string> _turnBaselines = [];
+
     private readonly List<string> _symbolsLookedUp = [];
     private readonly IList<AITool> _tools;
 
@@ -68,6 +76,21 @@ public sealed class ScriptChatSession
     public IReadOnlyList<ChatTurn> Turns => _turns;
 
     /// <summary>
+    /// Gets the script as it stood when a turn was sent, so a proposed edit can be shown as a
+    /// diff against what the model actually saw.
+    /// </summary>
+    /// <param name="turnIndex">Index into <see cref="Turns"/>.</param>
+    /// <returns>The script that accompanied that turn.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="turnIndex"/> is out of range.</exception>
+    public string GetScriptBaseline(int turnIndex)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(turnIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(turnIndex, _turnBaselines.Count);
+
+        return _turnBaselines[turnIndex];
+    }
+
+    /// <summary>
     /// Sends a user turn and returns what the assistant produced.
     /// </summary>
     /// <param name="userMessage">What the user typed.</param>
@@ -105,7 +128,7 @@ public sealed class ScriptChatSession
             }
 
             _history.Add(new ChatMessage(ChatRole.User, BuildUserTurn(userMessage, currentScript)));
-            _turns.Add(new ChatTurn(ChatTurnRole.User, userMessage, null, null, EditDisposition.None));
+            AddTurn(new ChatTurn(ChatTurnRole.User, userMessage, null, null, EditDisposition.None), currentScript);
 
             var chatOptions = new ChatOptions { Tools = _tools };
             var response = await _chatClient
@@ -119,12 +142,14 @@ public sealed class ScriptChatSession
             var text = string.IsNullOrWhiteSpace(response.Text) ? null : response.Text.Trim();
             var proposal = _capturedProposal;
 
-            _turns.Add(new ChatTurn(
-                ChatTurnRole.Assistant,
-                text,
-                proposal?.ProposedCode,
-                proposal?.Summary,
-                proposal is null ? EditDisposition.None : EditDisposition.PendingReview));
+            AddTurn(
+                new ChatTurn(
+                    ChatTurnRole.Assistant,
+                    text,
+                    proposal?.ProposedCode,
+                    proposal?.Summary,
+                    proposal is null ? EditDisposition.None : EditDisposition.PendingReview),
+                currentScript);
 
             _options.Logger.LogInformation(
                 "Assistant turn complete. ProposedEdit={ProposedEdit} SymbolLookups={SymbolLookups}",
@@ -178,8 +203,16 @@ public sealed class ScriptChatSession
     {
         _history.Clear();
         _turns.Clear();
+        _turnBaselines.Clear();
         _symbolsLookedUp.Clear();
         _capturedProposal = null;
+    }
+
+    /// <summary>Appends a turn and the script it was sent against, keeping the two in step.</summary>
+    private void AddTurn(ChatTurn turn, string baselineScript)
+    {
+        _turns.Add(turn);
+        _turnBaselines.Add(baselineScript);
     }
 
     private string BuildSystemPrompt()

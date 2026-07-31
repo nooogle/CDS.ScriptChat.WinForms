@@ -11,6 +11,9 @@
 		<PackageTags>ai;chat;scripting;winforms;claude;llm</PackageTags>
 	</PropertyGroup>
 
+	<!-- DPAPI (System.Security.Cryptography.ProtectedData) ships in the framework for
+	     net10.0-windows, so it needs no package reference. -->
+
 	<ItemGroup>
 		<ProjectReference Include="..\CDS.ScriptChat.Core\CDS.ScriptChat.Core.csproj" />
 	</ItemGroup>

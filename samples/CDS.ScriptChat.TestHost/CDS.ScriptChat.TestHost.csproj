@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net10.0-windows</TargetFramework>
+		<UseWindowsForms>true</UseWindowsForms>
+		<ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+		<IsPackable>false</IsPackable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\src\CDS.ScriptChat.WinForms\CDS.ScriptChat.WinForms.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Demonstrates the file half of D12: the panel finds this beside the executable. -->
+		<Content Include="scriptchat.context.md">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+
+</Project>

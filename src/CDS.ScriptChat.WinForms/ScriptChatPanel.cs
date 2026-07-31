@@ -2,6 +2,7 @@ using System.ComponentModel;
 
 using CDS.ScriptChat.Core;
 
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -9,24 +10,26 @@ namespace CDS.ScriptChat.WinForms;
 
 /// <summary>
 /// The script+chat panel: one scrolling transcript of user and assistant turns, an input box,
-/// and a send button (D6).
+/// and a send button (D6). Proposed edits render inline as a diff with Accept and Reject.
 /// </summary>
 /// <remarks>
-/// <para>
 /// The panel never touches an editor control directly. It reads the script through
-/// <see cref="ScriptTextProvider"/>, so the host can back that with Scintilla, a plain
+/// <see cref="ScriptTextProvider"/> and writes an accepted edit through
+/// <see cref="ScriptTextSetter"/>, so the host can back those with Scintilla, a plain
 /// <see cref="TextBox"/>, or anything else (D15).
-/// </para>
-/// <para>
-/// Milestone 1 renders a proposed edit as read-only text. The inline diff with Accept and
-/// Reject buttons — and the setter that applies it — arrive with the next build-order step.
-/// </para>
 /// </remarks>
 public partial class ScriptChatPanel : UserControl
 {
     private ScriptChatSession? _session;
     private ILogger _logger = NullLogger.Instance;
     private bool _turnInFlight;
+
+    /// <summary>
+    /// The chat client created by <see cref="Configure"/>, which this panel owns and must
+    /// dispose. Null when the session came from <see cref="AttachSession"/>, where the caller
+    /// keeps ownership.
+    /// </summary>
+    private IChatClient? _ownedChatClient;
 
     /// <summary>Initialises a new instance of the <see cref="ScriptChatPanel"/> class.</summary>
     public ScriptChatPanel()
@@ -36,16 +39,30 @@ public partial class ScriptChatPanel : UserControl
     }
 
     /// <summary>
+    /// Raised after an accepted edit has been handed to <see cref="ScriptTextSetter"/>, so the
+    /// host can react — refocus the editor, mark the document dirty, and so on.
+    /// </summary>
+    public event EventHandler<ScriptEditAcceptedEventArgs>? EditAccepted;
+
+    /// <summary>
     /// Gets or sets the callback that returns the script currently open in the host's editor.
     /// Called once per turn, so the model always sees the live buffer.
     /// </summary>
-    /// <remarks>
-    /// Deliberately a delegate rather than an editor interface: the library must not presume
-    /// which editor the host uses (D15).
-    /// </remarks>
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Func<string>? ScriptTextProvider { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callback that replaces the script in the host's editor. Invoked only
+    /// when the user accepts a proposed edit — never automatically (D5).
+    /// </summary>
+    /// <remarks>
+    /// Leaving this unset makes proposals review-only: the diff still renders, but Accept
+    /// reports that no editor is wired up rather than silently doing nothing.
+    /// </remarks>
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public Action<string>? ScriptTextSetter { get; set; }
 
     /// <summary>
     /// Gets or sets the logger. Turn structure and failures are logged; prompt and response
@@ -59,11 +76,49 @@ public partial class ScriptChatPanel : UserControl
         set => _logger = value ?? NullLogger.Instance;
     }
 
-    /// <summary>
-    /// Gets a value indicating whether the panel is ready to send a turn.
-    /// </summary>
+    /// <summary>Gets a value indicating whether the panel is ready to send a turn.</summary>
     [Browsable(false)]
     public bool IsReady => _session is not null && ScriptTextProvider is not null;
+
+    /// <summary>
+    /// Builds a client and a fresh session from a provider configuration, and attaches it.
+    /// This is what the settings panel's applied configuration feeds into, and it is how a
+    /// provider or model change takes effect without restarting the host app.
+    /// </summary>
+    /// <param name="clientOptions">The provider, key, and model to use.</param>
+    /// <param name="sessionOptions">
+    /// Symbol lookup, orientation blurb, and logging for the new session. Pass
+    /// <see langword="null"/> for defaults.
+    /// </param>
+    /// <remarks>
+    /// The conversation starts fresh, because history is not carried across providers (D10).
+    /// A configuration that cannot produce a client leaves the panel unavailable with the
+    /// reason shown, rather than throwing at the caller.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="clientOptions"/> is <see langword="null"/>.</exception>
+    public void Configure(ScriptChatClientOptions clientOptions, ScriptChatSessionOptions? sessionOptions = null)
+    {
+        ArgumentNullException.ThrowIfNull(clientOptions);
+
+        IChatClient client;
+        try
+        {
+            client = ScriptChatClientFactory.Create(clientOptions);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Creating a {Provider} client failed.", clientOptions.Provider);
+            SetUnavailable(ex.Message);
+            return;
+        }
+
+        AttachSession(new ScriptChatSession(client, sessionOptions));
+
+        // Only replace the owned client once the new one is in use, so a failure above leaves
+        // the previous configuration working.
+        ReplaceOwnedClient(client);
+        SetStatus($"Ready · {clientOptions.Provider} · {clientOptions.ModelId}");
+    }
 
     /// <summary>
     /// Attaches the conversation this panel drives, clearing whatever was shown before.
@@ -72,6 +127,10 @@ public partial class ScriptChatPanel : UserControl
     /// The session to drive, or <see langword="null"/> to detach — which is how the panel is
     /// left when no API key is configured.
     /// </param>
+    /// <remarks>
+    /// The caller keeps ownership of the session's chat client. Use <see cref="Configure"/> to
+    /// have the panel build and own one instead.
+    /// </remarks>
     public void AttachSession(ScriptChatSession? session)
     {
         _session = session;
@@ -83,13 +142,11 @@ public partial class ScriptChatPanel : UserControl
         }
         else
         {
-            SetStatus(ScriptTextProvider is null
-                ? "No script source configured."
-                : "Ready.");
+            SetStatus(ScriptTextProvider is null ? "No script source configured." : "Ready.");
 
-            foreach (var turn in session.Turns)
+            for (var i = 0; i < session.Turns.Count; i++)
             {
-                AppendTurn(turn);
+                AppendTurn(session.Turns[i], sessionTurnIndex: i, baselineScript: session.GetScriptBaseline(i));
             }
         }
 
@@ -105,6 +162,16 @@ public partial class ScriptChatPanel : UserControl
     {
         AttachSession(null);
         SetStatus(reason);
+    }
+
+    /// <summary>
+    /// Disposes the previously owned chat client, if any, and takes ownership of the new one.
+    /// </summary>
+    private void ReplaceOwnedClient(IChatClient? client)
+    {
+        var previous = _ownedChatClient;
+        _ownedChatClient = client;
+        previous?.Dispose();
     }
 
     /// <summary>Removes every turn from the transcript.</summary>
@@ -161,17 +228,20 @@ public partial class ScriptChatPanel : UserControl
         UpdateEnabledState();
         SetStatus("Thinking…");
 
+        // Captured before the call so the diff is against what the model actually saw, even if
+        // the user edits the buffer while the turn is in flight.
+        var script = ScriptTextProvider() ?? string.Empty;
+
         try
         {
-            var script = ScriptTextProvider() ?? string.Empty;
-
-            // Render the user's turn straight away rather than waiting for the round trip.
-            AppendTurn(new ChatTurn(ChatTurnRole.User, userMessage, null, null, EditDisposition.None));
+            AppendTurn(
+                new ChatTurn(ChatTurnRole.User, userMessage, null, null, EditDisposition.None),
+                sessionTurnIndex: _session.Turns.Count,
+                baselineScript: null);
 
             await _session.SendAsync(userMessage, script).ConfigureAwait(true);
 
-            // The session appended both turns; the user's is already on screen.
-            AppendTurn(_session.Turns[^1]);
+            AppendTurn(_session.Turns[^1], sessionTurnIndex: _session.Turns.Count - 1, baselineScript: script);
             SetStatus("Ready.");
         }
         catch (Exception ex)
@@ -179,12 +249,10 @@ public partial class ScriptChatPanel : UserControl
             // The UI is the end of the line for this exception — rethrowing from an event
             // handler would take the host app down, so it is surfaced and logged instead.
             _logger.LogError(ex, "Script chat turn failed.");
-            AppendTurn(new ChatTurn(
-                ChatTurnRole.Assistant,
-                $"That turn failed: {ex.Message}",
-                null,
-                null,
-                EditDisposition.None));
+            AppendTurn(
+                new ChatTurn(ChatTurnRole.Assistant, $"That turn failed: {ex.Message}", null, null, EditDisposition.None),
+                sessionTurnIndex: null,
+                baselineScript: null);
             SetStatus("Last turn failed.");
         }
         finally
@@ -194,13 +262,91 @@ public partial class ScriptChatPanel : UserControl
         }
     }
 
-    private void AppendTurn(ChatTurn turn)
+    private void AppendTurn(ChatTurn turn, int? sessionTurnIndex, string? baselineScript)
     {
-        var view = new ChatTurnView { Width = GetTurnViewWidth() };
-        view.Bind(turn);
+        var view = new ChatTurnView
+        {
+            Width = GetTurnViewWidth(),
+            SessionTurnIndex = sessionTurnIndex,
+        };
+
+        view.EditAccepted += OnTurnEditAccepted;
+        view.EditRejected += OnTurnEditRejected;
+        view.Bind(turn, baselineScript);
 
         _transcriptPanel.Controls.Add(view);
         _transcriptPanel.ScrollControlIntoView(view);
+    }
+
+    private void OnTurnEditAccepted(object? sender, EventArgs e)
+    {
+        if (sender is not ChatTurnView view || !TryGetPendingTurn(view, out var turn))
+        {
+            return;
+        }
+
+        if (ScriptTextSetter is null)
+        {
+            _logger.LogWarning("An edit was accepted but no ScriptTextSetter is configured.");
+            SetStatus("No editor is wired up, so the edit could not be applied.");
+            return;
+        }
+
+        try
+        {
+            ScriptTextSetter(turn.ProposedCode!);
+        }
+        catch (Exception ex)
+        {
+            // The host's setter failed, so the buffer is in an unknown state — leave the
+            // proposal pending rather than marking it accepted.
+            _logger.LogError(ex, "Applying an accepted edit to the host editor failed.");
+            SetStatus($"Could not apply the edit: {ex.Message}");
+            return;
+        }
+
+        RecordDisposition(view, EditDisposition.Accepted);
+        SetStatus("Edit applied.");
+        EditAccepted?.Invoke(this, new ScriptEditAcceptedEventArgs(turn.ProposedCode!, turn.EditSummary));
+    }
+
+    private void OnTurnEditRejected(object? sender, EventArgs e)
+    {
+        if (sender is not ChatTurnView view || !TryGetPendingTurn(view, out _))
+        {
+            return;
+        }
+
+        RecordDisposition(view, EditDisposition.Rejected);
+        SetStatus("Edit rejected.");
+    }
+
+    private bool TryGetPendingTurn(ChatTurnView view, out ChatTurn turn)
+    {
+        turn = null!;
+
+        if (_session is null || view.SessionTurnIndex is not { } index || index >= _session.Turns.Count)
+        {
+            return false;
+        }
+
+        var candidate = _session.Turns[index];
+        if (candidate.Disposition != EditDisposition.PendingReview || candidate.ProposedCode is null)
+        {
+            return false;
+        }
+
+        turn = candidate;
+        return true;
+    }
+
+    private void RecordDisposition(ChatTurnView view, EditDisposition disposition)
+    {
+        var index = view.SessionTurnIndex!.Value;
+        _session!.SetEditDisposition(index, disposition);
+
+        // Re-bind so the caption updates and the buttons disappear; the diff itself stays.
+        view.Bind(_session.Turns[index], _session.GetScriptBaseline(index));
     }
 
     private void ResizeTurnViews()
