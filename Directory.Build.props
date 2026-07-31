@@ -1,0 +1,21 @@
+<Project>
+
+	<PropertyGroup>
+		<!-- Common package metadata — override per-project as needed -->
+		<Authors>Jon Shadforth</Authors>
+		<Company>Carpe Diem Systems</Company>
+		<Copyright>Copyright © 2026 Carpe Diem Systems</Copyright>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<RepositoryUrl>https://github.com/nooogle/CDS.ScriptChat.WinForms</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageProjectUrl>https://github.com/nooogle/CDS.ScriptChat.WinForms</PackageProjectUrl>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<LangVersion>latest</LangVersion>
+		<TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+	</PropertyGroup>
+
+</Project>

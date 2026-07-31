@@ -1,0 +1,39 @@
+# CLAUDE.md
+
+## Project
+
+CDS.ScriptChat — a reusable script+chat panel library for .NET/WinForms host
+apps (Fable, the OpenCvSharp Playground, potentially GroundTruth). Not
+OpenCvSharp-specific; provider-agnostic (Claude/OpenAI/Grok via
+`Microsoft.Extensions.AI.IChatClient`).
+
+## Read first
+
+`cds.scriptchat.design.md` (repo root) — architecture, decision log (D1–D15),
+use cases, and current milestone scope. Read it before writing code. Don't
+duplicate its content here; if a rule from there matters for every session,
+add a one-line pointer below instead of copying it in full.
+
+## Hard rules
+
+- All WinForms UI is standard Designer classes (`.cs`/`.Designer.cs`/`.resx`,
+  `InitializeComponent()`), editable in the VS 2026 Designer. No code-only
+  layout. (D14)
+- BYOK only. Never hardcode, log, or transmit an API key anywhere except the
+  provider SDK call itself. No telemetry on prompt/response content. (D3)
+- Proposed code edits arrive only via the `propose_script_edit` tool call and
+  are shown as a diff, never auto-applied, never parsed out of markdown
+  fences. (D5)
+- Nothing use-case-specific ships in the library: no Roslyn, no
+  CDS.CSharpScripting2, no Scintilla, no OpenCvSharp. Symbol lookup is an
+  interface the host implements; the script buffer is reached through
+  host-supplied delegates. (D15)
+- One milestone per session. Stay inside the current milestone's scope as
+  stated in cds.scriptchat.design.md — don't implement later-milestone use
+  cases opportunistically.
+- British English in comments and docs.
+
+## When in doubt
+
+Flag disagreement rather than silently deviating from a decision already made
+in the design doc's Decision Log.

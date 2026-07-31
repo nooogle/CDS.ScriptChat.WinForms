@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<IsPackable>false</IsPackable>
+
+		<!-- Microsoft.Testing.Platform (MTP) — run with `dotnet run`, not `dotnet test` -->
+		<OutputType>Exe</OutputType>
+		<EnableMSTestRunner>true</EnableMSTestRunner>
+		<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+		<TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MSTest" Version="4.3.3" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+		<PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.3.3" />
+		<PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.9.0" />
+		<PackageReference Include="AwesomeAssertions" Version="9.5.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\src\CDS.ScriptChat.Core\CDS.ScriptChat.Core.csproj" />
+	</ItemGroup>
+
+</Project>

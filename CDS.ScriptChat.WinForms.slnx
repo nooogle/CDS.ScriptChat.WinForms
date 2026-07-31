@@ -1,1 +1,10 @@
-<Solution />
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CDS.ScriptChat.Core/CDS.ScriptChat.Core.csproj" />
+    <Project Path="src/CDS.ScriptChat.WinForms/CDS.ScriptChat.WinForms.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CDS.ScriptChat.Core.Tests/CDS.ScriptChat.Core.Tests.csproj" />
+    <Project Path="tests/CDS.ScriptChat.WinForms.Tests/CDS.ScriptChat.WinForms.Tests.csproj" />
+  </Folder>
+</Solution>

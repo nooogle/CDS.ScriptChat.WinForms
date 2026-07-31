@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0-windows</TargetFramework>
+		<UseWindowsForms>true</UseWindowsForms>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+		<!-- Package -->
+		<Title>CDS ScriptChat WinForms</Title>
+		<Description>WinForms script+chat panel for the CDS.ScriptChat library. Host-agnostic: the script buffer is reached through caller-supplied delegates, with no dependency on any specific editor control.</Description>
+		<PackageTags>ai;chat;scripting;winforms;claude;llm</PackageTags>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\CDS.ScriptChat.Core\CDS.ScriptChat.Core.csproj" />
+	</ItemGroup>
+
+</Project>

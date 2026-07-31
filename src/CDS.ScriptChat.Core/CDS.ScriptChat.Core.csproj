@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+		<!-- Package -->
+		<Title>CDS ScriptChat Core</Title>
+		<Description>Provider-agnostic conversation engine for the CDS.ScriptChat script+chat panel. Built on Microsoft.Extensions.AI IChatClient; no WinForms or Roslyn dependency.</Description>
+		<PackageTags>ai;chat;scripting;claude;openai;llm</PackageTags>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Anthropic" Version="12.39.0" />
+		<PackageReference Include="Microsoft.Extensions.AI" Version="10.8.3" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
+	</ItemGroup>
+
+</Project>
