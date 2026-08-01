@@ -5,10 +5,20 @@
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 
 		<!-- Package -->
+		<IsPackable>true</IsPackable>
 		<Title>CDS ScriptChat Core</Title>
 		<Description>Provider-agnostic conversation engine for the CDS.ScriptChat script+chat panel. Built on Microsoft.Extensions.AI IChatClient; no WinForms or Roslyn dependency.</Description>
 		<PackageTags>ai;chat;scripting;claude;openai;llm</PackageTags>
+		<PackageReadmeFile>readme.md</PackageReadmeFile>
+		<PackageIcon>icon.png</PackageIcon>
 	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="readme.md" Pack="true" PackagePath="\" />
+		<!-- Shared across both packages. Flaticon licence requires attribution —
+		     it lives in readme.md and assets\readme.md. -->
+		<None Include="..\..\assets\icon.png" Pack="true" PackagePath="\" Visible="false" />
+	</ItemGroup>
 
 	<ItemGroup>
 		<PackageReference Include="Anthropic" Version="12.39.0" />

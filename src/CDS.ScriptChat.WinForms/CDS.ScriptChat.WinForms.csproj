@@ -6,10 +6,20 @@
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 
 		<!-- Package -->
+		<IsPackable>true</IsPackable>
 		<Title>CDS ScriptChat WinForms</Title>
 		<Description>WinForms script+chat panel for the CDS.ScriptChat library. Host-agnostic: the script buffer is reached through caller-supplied delegates, with no dependency on any specific editor control.</Description>
 		<PackageTags>ai;chat;scripting;winforms;claude;llm</PackageTags>
+		<PackageReadmeFile>readme.md</PackageReadmeFile>
+		<PackageIcon>icon.png</PackageIcon>
 	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="readme.md" Pack="true" PackagePath="\" />
+		<!-- Shared across both packages. Flaticon licence requires attribution —
+		     it lives in readme.md and assets\readme.md. -->
+		<None Include="..\..\assets\icon.png" Pack="true" PackagePath="\" Visible="false" />
+	</ItemGroup>
 
 	<!-- DPAPI (System.Security.Cryptography.ProtectedData) ships in the framework for
 	     net10.0-windows, so it needs no package reference. -->
