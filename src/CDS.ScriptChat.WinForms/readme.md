@@ -18,8 +18,6 @@ logged or transmitted anywhere except the provider SDK call itself.
 Builds on **CDS.ScriptChat.Core**, which holds the provider-agnostic
 conversation engine.
 
-Early release — the API is not yet stable.
-
 MIT licensed.
 
 ## Credits

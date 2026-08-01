@@ -14,6 +14,30 @@ Order matters: phases 1–3 must land before the repo goes public, phases 4–6 
 
 ---
 
+## ⚠ BLOCKER — content logging must be off before anything goes public
+
+**Prompts, responses, the user's script and proposed edits are currently written
+to disk** by the test host, which runs at `Trace`. That is correct for a
+diagnostic host and unacceptable in anything shipped or public (D3). This blocks
+phase 4 and everything after it.
+
+The full checklist lives under "What must be removed or turned off before
+release" in `cds.scriptchat.design.md` — three items, none of them done. Do not
+mark phase 4 complete without walking that list.
+
+Two things that make this live *now* rather than later:
+
+- The design doc puts the due date at "before `CDS.ScriptChat` is consumed by any
+  app other than the test host". Consuming the local packages from the
+  OpenCvSharp Playground meets that condition — so the "consuming hosts never
+  configure `Trace` for `CDS.ScriptChat.*`" item applies from the first
+  integration, not from the first publish.
+- The repo is currently **private** on GitHub. Any log file committed by accident
+  before it flips to public becomes public with it, and stays in history. Check
+  for stray logs as part of the phase 4 audit.
+
+---
+
 ## Phase 1 — Make the libraries produce packages
 
 Both `src` projects ship: `CDS.ScriptChat.Core` (provider-agnostic engine) and
@@ -103,18 +127,16 @@ both `netstandard2.0` and `net462`.
 
 - [x] MinVer 7.0.0 `PackageReference` in the root `Directory.Build.props` with
       `PrivateAssets=all`.
-- [x] `MinVerTagPrefix` set to lowercase `v`, and `MinVerMinimumMajorMinor` to
-      `0.1`. Both workflow triggers in phases 5–6 must match the `v` prefix —
-      CDS.CSharpScripting2 gets this wrong (props say `V`, `ci.yml` says `v*`,
-      `publish.yml` says `V*`); do not copy that.
-- [x] Verified on the untagged repo: version resolves to `0.1.0-alpha.0.3`,
-      `FileVersion` `0.1.0.0`, informational version carries the commit SHA.
-      `AssemblyVersion` is `0.0.0.0` — that is MinVer's default of
-      `{major}.0.0.0` with major 0, not a misconfiguration.
+- [x] `MinVerTagPrefix` set to uppercase **`V`**, matching the house convention
+      already used in CDS.CSharpScripting2. Git tags are case-sensitive, so both
+      workflow triggers in phases 5–6 must be `V*` — note that
+      CDS.CSharpScripting2's `ci.yml` uses `v*` and so never fires; do not copy
+      that half of it.
+- [x] `MinVerMinimumMajorMinor` set to `1.0`.
+- [x] Verified against the `V1.0.0` tag: packages version as exactly `1.0.0`,
+      `AssemblyVersion` `1.0.0.0`, informational version carries the commit SHA.
 - [ ] Confirm CI checks out with `fetch-depth: 0` and `fetch-tags: true` — MinVer
       silently falls back to `0.0.0-alpha.0` on a shallow clone. (Phase 5.)
-- [ ] Sanity-check a real tag before the first release: `git tag v0.1.0` should
-      build as exactly `0.1.0`.
 
 ## Phase 3 — Local NuGet feed *(done)*
 
@@ -150,8 +172,12 @@ Do this consciously, not as a side effect of pushing.
       Per D3 no key should ever have been committed — confirm rather than assume.
       A key found in *history* means rewriting history or starting a fresh repo,
       so check before the first public push.
-- [ ] Confirm the logging removals listed under "What must be removed or turned
-      off before release" in `cds.scriptchat.design.md` are done.
+- [ ] **Confirm the logging removals** listed under "What must be removed or
+      turned off before release" in `cds.scriptchat.design.md` are done — see the
+      blocker at the top of this file. Also grep the working tree and history for
+      stray `.csv`/`.log` files written by the test host at `Trace`; those contain
+      prompts, responses and script content and must not survive the flip to
+      public.
 - [ ] Repo hygiene files, copying CDS.CSharpScripting2's set: `README.md`
       (badges, quick start, BYOK note), `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,
       `SECURITY.md`. `LICENSE` (MIT) is already present. If the root `README.md`

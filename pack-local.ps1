@@ -4,9 +4,10 @@
     NuGet feed folder for consumption by host apps.
 
 .DESCRIPTION
-    Versions come from MinVer. On an untagged commit that means a height-based
-    prerelease such as 0.1.0-alpha.0.7, which changes with every commit — so a
-    consuming app never picks up a stale copy from the global NuGet cache.
+    Versions come from MinVer. On a tagged commit that is the tag itself (V1.0.0
+    -> 1.0.0); on any commit after it, a height-based prerelease such as
+    1.0.1-alpha.0.7, which changes with every commit — so a consuming app never
+    picks up a stale copy from the global NuGet cache.
 
     If a version IS reused (repacking the same commit), pass -Force to evict the
     matching folders from the global package cache. Without that, the consumer
@@ -32,11 +33,14 @@
     Setup, once per machine:
         dotnet nuget add source C:\dev\localfeed -n cds-local
 
-    Then in the consuming app:
-        <PackageReference Include="CDS.ScriptChat.WinForms" Version="0.1.0-*" />
+    Then in the consuming app, either pin the released version:
+        <PackageReference Include="CDS.ScriptChat.WinForms" Version="1.0.0" />
 
-    A floating prerelease version like 0.1.0-* picks up the newest local build on
-    every restore, which is what makes the iteration loop bearable.
+    ...or float, to pick up the newest local build on every restore:
+        <PackageReference Include="CDS.ScriptChat.WinForms" Version="1.0.*-*" />
+
+    The trailing -* matters: post-tag builds are prereleases (1.0.1-alpha.0.N),
+    and a plain 1.0.* floating range excludes prerelease versions entirely.
 #>
 [CmdletBinding()]
 param(

@@ -22,8 +22,6 @@ For a ready-made WinForms UI on top of this, see **CDS.ScriptChat.WinForms**.
 **Bring your own key.** The library never stores, logs or transmits an API key
 anywhere except the provider SDK call itself.
 
-Early release — the API is not yet stable.
-
 MIT licensed.
 
 ## Credits

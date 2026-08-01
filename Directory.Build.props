@@ -40,8 +40,8 @@
 		     height-based prerelease (0.1.0-alpha.0.N), so every commit produces a
 		     distinct version — which is what stops a local feed consumer picking
 		     up a stale package from the global NuGet cache. -->
-		<MinVerTagPrefix>v</MinVerTagPrefix>
-		<MinVerMinimumMajorMinor>0.1</MinVerMinimumMajorMinor>
+		<MinVerTagPrefix>V</MinVerTagPrefix>
+		<MinVerMinimumMajorMinor>1.0</MinVerMinimumMajorMinor>
 	</PropertyGroup>
 
 	<ItemGroup>
