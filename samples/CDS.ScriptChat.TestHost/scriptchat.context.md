@@ -7,3 +7,8 @@ Kestrel is internal and is not documented publicly, so you will not have seen it
 guess its API from naming conventions in other imaging libraries — the names and parameter
 rules are deliberately unlike them. Call `lookup_symbol` for every Kestrel type or method you
 intend to use, and follow exactly what it returns.
+
+Because the names are unguessable, start by looking up a namespace: `lookup_symbol` on
+`Kestrel.Imaging` or `Kestrel.Pipeline` lists what that namespace contains. Frame operations
+live in `Kestrel.Imaging` and are static — `Workspace.Acquire<T>` is only for pipeline
+components and most scripts never need it.

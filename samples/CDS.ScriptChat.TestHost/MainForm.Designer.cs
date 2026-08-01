@@ -38,6 +38,7 @@ partial class MainForm
         _chatPanel = new CDS.ScriptChat.WinForms.ScriptChatPanel();
         _lookupGroupBox = new System.Windows.Forms.GroupBox();
         _lookupListBox = new System.Windows.Forms.ListBox();
+        _logFileLinkLabel = new System.Windows.Forms.LinkLabel();
         ((System.ComponentModel.ISupportInitialize)_splitContainer).BeginInit();
         _splitContainer.Panel1.SuspendLayout();
         _splitContainer.Panel2.SuspendLayout();
@@ -103,13 +104,15 @@ partial class MainForm
         _rightLayout.Controls.Add(_settingsPanel, 0, 0);
         _rightLayout.Controls.Add(_chatPanel, 0, 1);
         _rightLayout.Controls.Add(_lookupGroupBox, 0, 2);
+        _rightLayout.Controls.Add(_logFileLinkLabel, 0, 3);
         _rightLayout.Dock = System.Windows.Forms.DockStyle.Fill;
         _rightLayout.Location = new System.Drawing.Point(0, 0);
         _rightLayout.Name = "_rightLayout";
-        _rightLayout.RowCount = 3;
+        _rightLayout.RowCount = 4;
         _rightLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.AutoSize));
         _rightLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
         _rightLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 150F));
+        _rightLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.AutoSize));
         _rightLayout.Size = new System.Drawing.Size(556, 720);
         _rightLayout.TabIndex = 0;
         //
@@ -153,6 +156,20 @@ partial class MainForm
         _lookupListBox.Size = new System.Drawing.Size(544, 122);
         _lookupListBox.TabIndex = 0;
         //
+        // _logFileLinkLabel
+        //
+        _logFileLinkLabel.AutoEllipsis = true;
+        _logFileLinkLabel.AutoSize = true;
+        _logFileLinkLabel.Dock = System.Windows.Forms.DockStyle.Fill;
+        _logFileLinkLabel.Location = new System.Drawing.Point(3, 717);
+        _logFileLinkLabel.Margin = new System.Windows.Forms.Padding(3, 4, 3, 4);
+        _logFileLinkLabel.Name = "_logFileLinkLabel";
+        _logFileLinkLabel.Size = new System.Drawing.Size(550, 15);
+        _logFileLinkLabel.TabIndex = 3;
+        _logFileLinkLabel.TabStop = true;
+        _logFileLinkLabel.Text = "Log:";
+        _logFileLinkLabel.LinkClicked += OnLogFileLinkClicked;
+        //
         // MainForm
         //
         AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
@@ -185,4 +202,5 @@ partial class MainForm
     private CDS.ScriptChat.WinForms.ScriptChatPanel _chatPanel;
     private System.Windows.Forms.GroupBox _lookupGroupBox;
     private System.Windows.Forms.ListBox _lookupListBox;
+    private System.Windows.Forms.LinkLabel _logFileLinkLabel;
 }

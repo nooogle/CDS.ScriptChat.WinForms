@@ -15,6 +15,9 @@ public partial class ChatTurnView : UserControl
     private static readonly Color s_addedBackColour = Color.FromArgb(223, 245, 226);
     private static readonly Color s_removedBackColour = Color.FromArgb(255, 226, 226);
 
+    /// <summary>Guards the height change <see cref="ApplyContentLayout"/> makes re-entering it.</summary>
+    private bool _applyingContentLayout;
+
     /// <summary>Initialises a new instance of the <see cref="ChatTurnView"/> class.</summary>
     public ChatTurnView()
     {
@@ -69,14 +72,14 @@ public partial class ChatTurnView : UserControl
             _actionsPanel.Visible = turn.Disposition == EditDisposition.PendingReview;
         }
 
-        ApplyWrapWidth();
+        ApplyContentLayout();
     }
 
     /// <inheritdoc />
     protected override void OnSizeChanged(EventArgs e)
     {
         base.OnSizeChanged(e);
-        ApplyWrapWidth();
+        ApplyContentLayout();
     }
 
     /// <summary>Raises the <see cref="EditAccepted"/> event.</summary>
@@ -155,19 +158,33 @@ public partial class ChatTurnView : UserControl
     }
 
     /// <summary>
-    /// Constrains the wrapping controls to the available width. An autosizing label inside a
-    /// scrolling flow panel has no natural width to wrap against, so it is set here rather
-    /// than in the Designer.
+    /// Constrains the wrapping controls to the available width, then takes the height that
+    /// width implies.
     /// </summary>
-    private void ApplyWrapWidth()
+    /// <remarks>
+    /// The owning panel decides how wide a turn is, so this view must not autosize: its only
+    /// child is docked, and a docked child contributes no preferred width, which would collapse
+    /// the whole view to nothing. Height is the half it can work out for itself — and only once
+    /// the width is known, because that is what the prose wraps against.
+    /// </remarks>
+    private void ApplyContentLayout()
     {
-        var available = _layout.ClientSize.Width - _layout.Padding.Horizontal;
-        if (available <= 0)
+        var available = ClientSize.Width - _layout.Padding.Horizontal;
+        if (available <= 0 || _applyingContentLayout)
         {
             return;
         }
 
-        _messageLabel.MaximumSize = new Size(available, 0);
-        _diffTextBox.Width = available;
+        _applyingContentLayout = true;
+        try
+        {
+            _messageLabel.MaximumSize = new Size(available, 0);
+            _diffTextBox.Width = available;
+            Height = _layout.PreferredSize.Height;
+        }
+        finally
+        {
+            _applyingContentLayout = false;
+        }
     }
 }

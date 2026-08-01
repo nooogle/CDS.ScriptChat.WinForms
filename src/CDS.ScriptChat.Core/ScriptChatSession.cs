@@ -1,8 +1,10 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Text;
 
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CDS.ScriptChat.Core;
 
@@ -25,6 +27,7 @@ public sealed class ScriptChatSession
 {
     private readonly IChatClient _chatClient;
     private readonly ScriptChatSessionOptions _options;
+    private readonly ILogger _logger;
     private readonly List<ChatMessage> _history = [];
     private readonly List<ChatTurn> _turns = [];
 
@@ -50,9 +53,9 @@ public sealed class ScriptChatSession
     /// Initialises a session over an existing chat client.
     /// </summary>
     /// <param name="chatClient">
-    /// The provider client, typically from <see cref="ScriptChatClientFactory.Create"/>. The
-    /// session wraps it with function invocation; the caller keeps ownership and is responsible
-    /// for disposing it.
+    /// The provider client, typically from <see cref="ScriptChatClientFactory.Create(ScriptChatClientOptions)"/>.
+    /// The session wraps it with function invocation and logging; the caller keeps ownership and
+    /// is responsible for disposing it.
     /// </param>
     /// <param name="options">Host-supplied configuration, or <see langword="null"/> for defaults.</param>
     /// <exception cref="ArgumentNullException"><paramref name="chatClient"/> is <see langword="null"/>.</exception>
@@ -61,13 +64,30 @@ public sealed class ScriptChatSession
         ArgumentNullException.ThrowIfNull(chatClient);
 
         _options = options ?? new ScriptChatSessionOptions();
-        _chatClient = chatClient.AsBuilder().UseFunctionInvocation().Build();
+        _logger = _options.LoggerFactory?.CreateLogger(typeof(ScriptChatSession)) ?? NullLogger.Instance;
+
+        // Function invocation is inside the logging client, so the log records every provider
+        // round-trip a turn makes — the tool call and the follow-up — rather than collapsing
+        // them into one entry. That distinction is the whole point of the log when a tool-using
+        // turn goes wrong.
+        var builder = chatClient.AsBuilder().UseFunctionInvocation(_options.LoggerFactory);
+
+        // UseLogging resolves its factory with GetRequiredService when handed null, so it is
+        // added only when there is one to give it. UseFunctionInvocation tolerates null.
+        if (_options.LoggerFactory is not null)
+        {
+            builder = builder.UseLogging(_options.LoggerFactory);
+        }
+
+        _chatClient = builder.Build();
 
         _tools =
         [
             AIFunctionFactory.Create(LookupSymbolAsync, name: "lookup_symbol"),
             AIFunctionFactory.Create(ProposeScriptEdit, name: "propose_script_edit"),
         ];
+
+        _logger.SessionCreated(_tools.Count, _logger.IsEnabled(LogLevel.Trace));
     }
 
     /// <summary>
@@ -113,9 +133,13 @@ public sealed class ScriptChatSession
 
         if (Interlocked.Exchange(ref _turnInFlight, 1) == 1)
         {
+            _logger.TurnRejectedAsOverlapping(_turns.Count);
             throw new InvalidOperationException(
                 "A turn is already in flight on this session. Await the previous SendAsync before starting another.");
         }
+
+        var turnIndex = _turns.Count;
+        var stopwatch = Stopwatch.StartNew();
 
         try
         {
@@ -127,7 +151,12 @@ public sealed class ScriptChatSession
                 _history.Add(new ChatMessage(ChatRole.System, BuildSystemPrompt()));
             }
 
-            _history.Add(new ChatMessage(ChatRole.User, BuildUserTurn(userMessage, currentScript)));
+            var userTurn = BuildUserTurn(userMessage, currentScript);
+
+            _logger.TurnStarted(turnIndex, userMessage.Length, currentScript.Length, _history.Count);
+            _logger.TurnRequestContent(turnIndex, userTurn);
+
+            _history.Add(new ChatMessage(ChatRole.User, userTurn));
             AddTurn(new ChatTurn(ChatTurnRole.User, userMessage, null, null, EditDisposition.None), currentScript);
 
             var chatOptions = new ChatOptions { Tools = _tools };
@@ -151,12 +180,32 @@ public sealed class ScriptChatSession
                     proposal is null ? EditDisposition.None : EditDisposition.PendingReview),
                 currentScript);
 
-            _options.Logger.LogInformation(
-                "Assistant turn complete. ProposedEdit={ProposedEdit} SymbolLookups={SymbolLookups}",
+            _logger.TurnCompleted(
+                turnIndex,
+                stopwatch.ElapsedMilliseconds,
                 proposal is not null,
-                _symbolsLookedUp.Count);
+                _symbolsLookedUp.Count,
+                response.Messages.Count,
+                response.FinishReason?.Value,
+                response.Usage?.InputTokenCount,
+                response.Usage?.OutputTokenCount);
+            _logger.TurnResponseContent(turnIndex, text);
 
             return new AssistantTurnResult(text, proposal, [.. _symbolsLookedUp]);
+        }
+        catch (OperationCanceledException)
+        {
+            // Logged rather than swallowed: a cancelled turn and a failed one look identical in
+            // the transcript, so the log is the only place the difference survives.
+            _logger.TurnCancelled(turnIndex, stopwatch.ElapsedMilliseconds);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Same reasoning, plus the provider's own exception detail — which the panel reduces
+            // to a one-line message — is only ever recorded here.
+            _logger.TurnFailed(ex, turnIndex, stopwatch.ElapsedMilliseconds);
+            throw;
         }
         finally
         {
@@ -193,6 +242,7 @@ public sealed class ScriptChatSession
         }
 
         _turns[turnIndex] = turn with { Disposition = disposition };
+        _logger.EditDispositionRecorded(turnIndex, disposition);
     }
 
     /// <summary>
@@ -201,6 +251,8 @@ public sealed class ScriptChatSession
     /// </summary>
     public void Reset()
     {
+        _logger.SessionReset(_turns.Count, _history.Count);
+
         _history.Clear();
         _turns.Clear();
         _turnBaselines.Clear();
@@ -238,14 +290,20 @@ public sealed class ScriptChatSession
             - Keep prose brief and focused on what changed and why.
             """);
 
-        if (!string.IsNullOrWhiteSpace(_options.OrientationBlurb))
+        var hasOrientation = !string.IsNullOrWhiteSpace(_options.OrientationBlurb);
+        if (hasOrientation)
         {
             prompt.AppendLine();
             prompt.AppendLine("About this host application and its scripts:");
-            prompt.AppendLine(_options.OrientationBlurb.Trim());
+            prompt.AppendLine(_options.OrientationBlurb!.Trim());
         }
 
-        return prompt.ToString();
+        var result = prompt.ToString();
+
+        _logger.SystemPromptBuilt(result.Length, hasOrientation);
+        _logger.SystemPromptContent(result);
+
+        return result;
     }
 
     private static string BuildUserTurn(string userMessage, string currentScript)
@@ -272,22 +330,30 @@ public sealed class ScriptChatSession
         CancellationToken cancellationToken = default)
     {
         _symbolsLookedUp.Add(containingType is null ? symbolName : $"{containingType}.{symbolName}");
+        _logger.SymbolLookupRequested(symbolName, containingType);
 
-        _options.Logger.LogInformation(
-            "lookup_symbol called. Symbol={SymbolName} ContainingType={ContainingType}",
-            symbolName,
-            containingType);
-
+        // A provider that throws is logged by the function-invocation client, so there is no
+        // try/catch here — only the timing of a successful lookup needs measuring.
+        var stopwatch = Stopwatch.StartNew();
         var result = await _options.SymbolLookup
             .LookupAsync(symbolName, containingType, cancellationToken)
             .ConfigureAwait(false);
 
         if (result is null)
         {
+            _logger.SymbolLookupNotFound(stopwatch.ElapsedMilliseconds, symbolName);
+
             return new LookupSymbolResponse(
                 Found: false,
                 Message: "No such symbol is reachable from this script's usings and referenced assemblies.");
         }
+
+        _logger.SymbolLookupResolved(
+            stopwatch.ElapsedMilliseconds,
+            symbolName,
+            result.Namespace,
+            result.Overloads.Count);
+        _logger.SymbolLookupContent(symbolName, result.Signature, result.XmlDocSummary);
 
         return new LookupSymbolResponse(
             Found: true,
@@ -306,7 +372,8 @@ public sealed class ScriptChatSession
         [Description("A one-line summary of what this edit changes.")]
         string summary)
     {
-        _options.Logger.LogInformation("propose_script_edit called. ScriptLength={ScriptLength}", newScript.Length);
+        _logger.EditProposed(newScript.Length, summary.Length, _capturedProposal is not null);
+        _logger.EditProposalContent(summary, newScript);
 
         // Last call wins if the model proposes twice; the prompt asks for at most one.
         _capturedProposal = new ScriptEditProposal(newScript, summary);

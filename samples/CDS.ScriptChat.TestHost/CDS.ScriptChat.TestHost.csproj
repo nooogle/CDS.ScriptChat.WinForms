@@ -9,7 +9,20 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<!-- The concrete logging pipeline is the host's to choose, not the library's; this one
+		     writes a CSV per run. See Logging\CsvLoggerProvider.cs. -->
+		<PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.10" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.10" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<ProjectReference Include="..\..\src\CDS.ScriptChat.WinForms\CDS.ScriptChat.WinForms.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- The CSV writer's quoting and escaping rules are worth testing even though this is a
+		     sample: silently malformed rows would make the log misleading rather than absent. -->
+		<InternalsVisibleTo Include="CDS.ScriptChat.WinForms.Tests" />
 	</ItemGroup>
 
 	<ItemGroup>

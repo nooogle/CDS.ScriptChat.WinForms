@@ -143,8 +143,6 @@ partial class ChatTurnView
         //
         AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
         AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-        AutoSize = true;
-        AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
         Controls.Add(_layout);
         Margin = new System.Windows.Forms.Padding(0);
         Name = "ChatTurnView";

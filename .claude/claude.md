@@ -21,6 +21,10 @@ add a one-line pointer below instead of copying it in full.
   layout. (D14)
 - BYOK only. Never hardcode, log, or transmit an API key anywhere except the
   provider SDK call itself. No telemetry on prompt/response content. (D3)
+- Logging is MEL via `ILoggerFactory`. Prompts, responses, proposed scripts and
+  symbol signatures go at `Trace` and nowhere else; `Information` and above carry
+  structure only (lengths, counts, timings, IDs). API keys at no level. New log
+  messages go in `ScriptChatLog` / `ScriptChatWinFormsLog`, not inline. (D16)
 - Proposed code edits arrive only via the `propose_script_edit` tool call and
   are shown as a diff, never auto-applied, never parsed out of markdown
   fences. (D5)

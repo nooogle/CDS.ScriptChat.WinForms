@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 
 using CDS.ScriptChat.Core;
 
@@ -20,6 +21,7 @@ namespace CDS.ScriptChat.WinForms;
 public partial class ScriptChatSettingsPanel : UserControl
 {
     private IApiKeyStore? _keyStore;
+    private ILoggerFactory? _loggerFactory;
     private ILogger _logger = NullLogger.Instance;
     private bool _suppressProviderChange;
 
@@ -52,14 +54,23 @@ public partial class ScriptChatSettingsPanel : UserControl
     }
 
     /// <summary>
-    /// Gets or sets the logger. Never receives key material (D3).
+    /// Gets or sets the factory the panel logs through, including the connection test it runs.
+    /// <see langword="null"/> — the default — disables logging.
     /// </summary>
+    /// <remarks>
+    /// Never receives key material at any level, only a key's length (D3). Set this before
+    /// <see cref="KeyStore"/> if you want the store's own load to be logged.
+    /// </remarks>
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public ILogger Logger
+    public ILoggerFactory? LoggerFactory
     {
-        get => _logger;
-        set => _logger = value ?? NullLogger.Instance;
+        get => _loggerFactory;
+        set
+        {
+            _loggerFactory = value;
+            _logger = value?.CreateLogger(typeof(ScriptChatSettingsPanel)) ?? NullLogger.Instance;
+        }
     }
 
     /// <summary>Gets the provider currently selected.</summary>
@@ -81,7 +92,7 @@ public partial class ScriptChatSettingsPanel : UserControl
     /// <summary>
     /// Builds the client options from what is currently on screen.
     /// </summary>
-    /// <returns>The options, ready for <see cref="ScriptChatClientFactory.Create"/>.</returns>
+    /// <returns>The options, ready for <see cref="ScriptChatClientFactory.Create(ScriptChatClientOptions, ILoggerFactory?)"/>.</returns>
     /// <exception cref="InvalidOperationException">No API key or model has been entered.</exception>
     public ScriptChatClientOptions BuildClientOptions()
     {
@@ -152,7 +163,7 @@ public partial class ScriptChatSettingsPanel : UserControl
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Reading the stored API key failed.");
+            _logger.ApiKeyStoreFailed(ex, "read", SelectedProvider);
             _apiKeyTextBox.Clear();
             SetStatus("Could not read the stored key. Enter it again.");
         }
@@ -168,6 +179,8 @@ public partial class ScriptChatSettingsPanel : UserControl
         PopulateModelsForSelectedProvider();
         LoadStoredKeyForSelectedProvider();
         SetStatus(string.Empty);
+
+        _logger.ProviderSelectionChanged(SelectedProvider, SelectedModelId, HasApiKey);
     }
 
     private void OnApplyButtonClick(object? sender, EventArgs e)
@@ -179,6 +192,7 @@ public partial class ScriptChatSettingsPanel : UserControl
         }
         catch (InvalidOperationException ex)
         {
+            _logger.ConfigurationIncomplete(ex.Message);
             SetStatus(ex.Message);
             return;
         }
@@ -189,6 +203,7 @@ public partial class ScriptChatSettingsPanel : UserControl
         }
 
         SetStatus($"Applied {options.Provider} · {options.ModelId}.");
+        _logger.ConfigurationApplied(options.Provider, options.ModelId, options.ApiKey.Length);
         ConfigurationApplied?.Invoke(this, new ScriptChatConfigurationEventArgs(options));
     }
 
@@ -201,16 +216,20 @@ public partial class ScriptChatSettingsPanel : UserControl
         }
         catch (InvalidOperationException ex)
         {
+            _logger.ConfigurationIncomplete(ex.Message);
             SetStatus(ex.Message);
             return;
         }
 
         SetButtonsEnabled(false);
         SetStatus("Testing…");
+        _logger.ConnectionTestStarted(options.Provider, options.ModelId);
+
+        var stopwatch = Stopwatch.StartNew();
 
         try
         {
-            using var client = ScriptChatClientFactory.Create(options);
+            using var client = ScriptChatClientFactory.Create(options, _loggerFactory);
 
             // Deliberately tiny: this is a credential and reachability check, not a warm-up.
             var response = await client
@@ -222,12 +241,17 @@ public partial class ScriptChatSettingsPanel : UserControl
             SetStatus(string.IsNullOrWhiteSpace(response.Text)
                 ? "Connected, but the provider returned nothing."
                 : "Connection succeeded.");
+
+            _logger.ConnectionTestSucceeded(
+                stopwatch.ElapsedMilliseconds,
+                options.Provider,
+                response.Text?.Length ?? 0);
         }
         catch (Exception ex)
         {
             // The provider's message can be surfaced: it describes the failure, and the key
-            // itself is never part of it.
-            _logger.LogError(ex, "Testing the {Provider} connection failed.", options.Provider);
+            // itself is never part of it. The log keeps the stack the status label cannot show.
+            _logger.ConnectionTestFailed(ex, stopwatch.ElapsedMilliseconds, options.Provider);
             SetStatus($"Connection failed: {ex.Message}");
         }
         finally
@@ -253,7 +277,7 @@ public partial class ScriptChatSettingsPanel : UserControl
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Removing the stored API key failed.");
+            _logger.ApiKeyStoreFailed(ex, "remove", SelectedProvider);
             SetStatus($"Could not remove the stored key: {ex.Message}");
         }
     }
@@ -272,7 +296,7 @@ public partial class ScriptChatSettingsPanel : UserControl
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Storing the API key failed.");
+            _logger.ApiKeyStoreFailed(ex, "store", options.Provider);
             SetStatus($"Could not store the key: {ex.Message}");
             return false;
         }

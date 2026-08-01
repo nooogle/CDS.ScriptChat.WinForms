@@ -1,3 +1,6 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
 namespace CDS.ScriptChat.Core;
 
 /// <summary>
@@ -31,13 +34,44 @@ public static class HostOrientationResolver
     /// The blurb, or <see langword="null"/> when neither source supplies one. A blank result
     /// from either source counts as "not supplied".
     /// </returns>
+    /// <exception cref="IOException">The conventional file exists but could not be read.</exception>
+    public static string? Resolve(IScriptChatHostContext? hostContext, string? searchDirectory = null)
+    {
+        return Resolve(hostContext, searchDirectory, logger: null);
+    }
+
+    /// <summary>
+    /// Resolves the orientation blurb: file first, then <paramref name="hostContext"/>, logging
+    /// which source won.
+    /// </summary>
+    /// <param name="hostContext">
+    /// The fallback source, used when no file is present. May be <see langword="null"/>.
+    /// </param>
+    /// <param name="searchDirectory">
+    /// Directory to look for <see cref="ConventionalFileName"/> in. Defaults to
+    /// <see cref="AppContext.BaseDirectory"/> — where a deployed host app's own files sit.
+    /// </param>
+    /// <param name="logger">
+    /// Where to record which source supplied the blurb, and the path probed when neither did.
+    /// This is worth logging because "the file was not deployed beside the executable" is the
+    /// commonest reason a host's orientation silently fails to reach the model. The blurb's own
+    /// text is logged at <see cref="LogLevel.Trace"/> only.
+    /// </param>
+    /// <returns>
+    /// The blurb, or <see langword="null"/> when neither source supplies one. A blank result
+    /// from either source counts as "not supplied".
+    /// </returns>
     /// <exception cref="IOException">
     /// The conventional file exists but could not be read. A file the host meant to supply and
     /// that turns out to be unreadable is a real fault, so it propagates rather than silently
     /// degrading to the fallback.
     /// </exception>
-    public static string? Resolve(IScriptChatHostContext? hostContext, string? searchDirectory = null)
+    public static string? Resolve(
+        IScriptChatHostContext? hostContext,
+        string? searchDirectory,
+        ILogger? logger)
     {
+        var log = logger ?? NullLogger.Instance;
         var directory = searchDirectory ?? AppContext.BaseDirectory;
         var path = Path.Combine(directory, ConventionalFileName);
 
@@ -48,11 +82,23 @@ public static class HostOrientationResolver
             var fromFile = File.ReadAllText(path);
             if (!string.IsNullOrWhiteSpace(fromFile))
             {
-                return fromFile.Trim();
+                var trimmed = fromFile.Trim();
+                log.OrientationResolvedFromFile(path, trimmed.Length);
+                log.OrientationContent(trimmed);
+                return trimmed;
             }
         }
 
         var fromProperty = hostContext?.OrientationBlurb;
-        return string.IsNullOrWhiteSpace(fromProperty) ? null : fromProperty.Trim();
+        if (string.IsNullOrWhiteSpace(fromProperty))
+        {
+            log.OrientationNotResolved(path);
+            return null;
+        }
+
+        var blurb = fromProperty.Trim();
+        log.OrientationResolvedFromHostContext(path, blurb.Length);
+        log.OrientationContent(blurb);
+        return blurb;
     }
 }

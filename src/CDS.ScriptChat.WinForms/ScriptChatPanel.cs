@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 
 using CDS.ScriptChat.Core;
 
@@ -21,6 +22,7 @@ namespace CDS.ScriptChat.WinForms;
 public partial class ScriptChatPanel : UserControl
 {
     private ScriptChatSession? _session;
+    private ILoggerFactory? _loggerFactory;
     private ILogger _logger = NullLogger.Instance;
     private bool _turnInFlight;
 
@@ -65,15 +67,30 @@ public partial class ScriptChatPanel : UserControl
     public Action<string>? ScriptTextSetter { get; set; }
 
     /// <summary>
-    /// Gets or sets the logger. Turn structure and failures are logged; prompt and response
-    /// content never are (D3).
+    /// Gets or sets the factory the panel logs through. <see langword="null"/> — the default —
+    /// disables logging.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Also used for the sessions and clients <see cref="Configure"/> builds, so setting this
+    /// one property instruments the whole chain: the panel, the conversation, function
+    /// invocation, and the provider round-trips, each under its own log category.
+    /// </para>
+    /// <para>
+    /// At <see cref="LogLevel.Trace"/> the chain records prompt and response content (D16).
+    /// Hosts that ship should not enable Trace. API keys are logged at no level (D3).
+    /// </para>
+    /// </remarks>
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public ILogger Logger
+    public ILoggerFactory? LoggerFactory
     {
-        get => _logger;
-        set => _logger = value ?? NullLogger.Instance;
+        get => _loggerFactory;
+        set
+        {
+            _loggerFactory = value;
+            _logger = value?.CreateLogger(typeof(ScriptChatPanel)) ?? NullLogger.Instance;
+        }
     }
 
     /// <summary>Gets a value indicating whether the panel is ready to send a turn.</summary>
@@ -87,37 +104,48 @@ public partial class ScriptChatPanel : UserControl
     /// </summary>
     /// <param name="clientOptions">The provider, key, and model to use.</param>
     /// <param name="sessionOptions">
-    /// Symbol lookup, orientation blurb, and logging for the new session. Pass
-    /// <see langword="null"/> for defaults.
+    /// Symbol lookup and orientation blurb for the new session. Pass <see langword="null"/> for
+    /// defaults.
     /// </param>
     /// <remarks>
+    /// <para>
     /// The conversation starts fresh, because history is not carried across providers (D10).
     /// A configuration that cannot produce a client leaves the panel unavailable with the
     /// reason shown, rather than throwing at the caller.
+    /// </para>
+    /// <para>
+    /// The session inherits this panel's <see cref="LoggerFactory"/> unless
+    /// <paramref name="sessionOptions"/> names one of its own, so a host that has set the
+    /// panel's factory gets the conversation instrumented without wiring it twice.
+    /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="clientOptions"/> is <see langword="null"/>.</exception>
     public void Configure(ScriptChatClientOptions clientOptions, ScriptChatSessionOptions? sessionOptions = null)
     {
         ArgumentNullException.ThrowIfNull(clientOptions);
 
+        var options = sessionOptions ?? new ScriptChatSessionOptions();
+        options = options with { LoggerFactory = options.LoggerFactory ?? _loggerFactory };
+
         IChatClient client;
         try
         {
-            client = ScriptChatClientFactory.Create(clientOptions);
+            client = ScriptChatClientFactory.Create(clientOptions, options.LoggerFactory);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Creating a {Provider} client failed.", clientOptions.Provider);
+            _logger.PanelConfigurationFailed(ex, clientOptions.Provider);
             SetUnavailable(ex.Message);
             return;
         }
 
-        AttachSession(new ScriptChatSession(client, sessionOptions));
+        AttachSession(new ScriptChatSession(client, options));
 
         // Only replace the owned client once the new one is in use, so a failure above leaves
         // the previous configuration working.
         ReplaceOwnedClient(client);
         SetStatus($"Ready · {clientOptions.Provider} · {clientOptions.ModelId}");
+        _logger.PanelConfigured(clientOptions.Provider, clientOptions.ModelId);
     }
 
     /// <summary>
@@ -139,6 +167,7 @@ public partial class ScriptChatPanel : UserControl
         if (session is null)
         {
             SetStatus("Not configured.");
+            _logger.SessionDetached();
         }
         else
         {
@@ -148,6 +177,11 @@ public partial class ScriptChatPanel : UserControl
             {
                 AppendTurn(session.Turns[i], sessionTurnIndex: i, baselineScript: session.GetScriptBaseline(i));
             }
+
+            _logger.SessionAttached(
+                session.Turns.Count,
+                ScriptTextProvider is not null,
+                ScriptTextSetter is not null);
         }
 
         UpdateEnabledState();
@@ -162,6 +196,7 @@ public partial class ScriptChatPanel : UserControl
     {
         AttachSession(null);
         SetStatus(reason);
+        _logger.PanelUnavailable(reason);
     }
 
     /// <summary>
@@ -177,12 +212,16 @@ public partial class ScriptChatPanel : UserControl
     /// <summary>Removes every turn from the transcript.</summary>
     public void ClearTranscript()
     {
-        foreach (Control control in _transcriptPanel.Controls)
-        {
-            control.Dispose();
-        }
+        // Snapshot first: disposing a control removes it from this collection, so disposing
+        // while enumerating it would skip every other turn and leak its handles.
+        var views = _transcriptPanel.Controls.Cast<Control>().ToArray();
 
         _transcriptPanel.Controls.Clear();
+
+        foreach (var view in views)
+        {
+            view.Dispose();
+        }
     }
 
     /// <inheritdoc />
@@ -214,12 +253,17 @@ public partial class ScriptChatPanel : UserControl
     {
         if (_turnInFlight || _session is null || ScriptTextProvider is null)
         {
+            _logger.SendIgnored(
+                _turnInFlight ? "a turn is already in flight"
+                : _session is null ? "no session is attached"
+                : "no ScriptTextProvider is configured");
             return;
         }
 
         var userMessage = _inputTextBox.Text.Trim();
         if (userMessage.Length == 0)
         {
+            _logger.SendIgnored("the input box is empty");
             return;
         }
 
@@ -231,6 +275,9 @@ public partial class ScriptChatPanel : UserControl
         // Captured before the call so the diff is against what the model actually saw, even if
         // the user edits the buffer while the turn is in flight.
         var script = ScriptTextProvider() ?? string.Empty;
+        var stopwatch = Stopwatch.StartNew();
+
+        _logger.SendRequested(userMessage.Length, script.Length);
 
         try
         {
@@ -239,16 +286,22 @@ public partial class ScriptChatPanel : UserControl
                 sessionTurnIndex: _session.Turns.Count,
                 baselineScript: null);
 
-            await _session.SendAsync(userMessage, script).ConfigureAwait(true);
+            var result = await _session.SendAsync(userMessage, script).ConfigureAwait(true);
 
             AppendTurn(_session.Turns[^1], sessionTurnIndex: _session.Turns.Count - 1, baselineScript: script);
             SetStatus("Ready.");
+
+            _logger.SendCompleted(
+                stopwatch.ElapsedMilliseconds,
+                result.ProposedEdit,
+                result.SymbolsLookedUp.Count);
         }
         catch (Exception ex)
         {
             // The UI is the end of the line for this exception — rethrowing from an event
-            // handler would take the host app down, so it is surfaced and logged instead.
-            _logger.LogError(ex, "Script chat turn failed.");
+            // handler would take the host app down, so it is surfaced and logged instead. The
+            // transcript only gets ex.Message; the log is where the stack trace survives.
+            _logger.SendFailed(ex, stopwatch.ElapsedMilliseconds);
             AppendTurn(
                 new ChatTurn(ChatTurnRole.Assistant, $"That turn failed: {ex.Message}", null, null, EditDisposition.None),
                 sessionTurnIndex: null,
@@ -282,43 +335,52 @@ public partial class ScriptChatPanel : UserControl
     {
         if (sender is not ChatTurnView view || !TryGetPendingTurn(view, out var turn))
         {
+            _logger.EditActionIgnored();
             return;
         }
 
         if (ScriptTextSetter is null)
         {
-            _logger.LogWarning("An edit was accepted but no ScriptTextSetter is configured.");
+            _logger.EditApplyHadNoSetter();
             SetStatus("No editor is wired up, so the edit could not be applied.");
             return;
         }
 
+        // Models emit bare "\n". A plain WinForms TextBox only breaks lines on "\r\n", so the
+        // script would arrive in the editor as one long line. Normalise here rather than in
+        // every host's setter.
+        var script = turn.ProposedCode!.ReplaceLineEndings();
+
         try
         {
-            ScriptTextSetter(turn.ProposedCode!);
+            ScriptTextSetter(script);
         }
         catch (Exception ex)
         {
             // The host's setter failed, so the buffer is in an unknown state — leave the
             // proposal pending rather than marking it accepted.
-            _logger.LogError(ex, "Applying an accepted edit to the host editor failed.");
+            _logger.EditApplyFailed(ex, view.SessionTurnIndex!.Value);
             SetStatus($"Could not apply the edit: {ex.Message}");
             return;
         }
 
         RecordDisposition(view, EditDisposition.Accepted);
         SetStatus("Edit applied.");
-        EditAccepted?.Invoke(this, new ScriptEditAcceptedEventArgs(turn.ProposedCode!, turn.EditSummary));
+        _logger.EditAccepted(view.SessionTurnIndex!.Value, script.Length);
+        EditAccepted?.Invoke(this, new ScriptEditAcceptedEventArgs(script, turn.EditSummary));
     }
 
     private void OnTurnEditRejected(object? sender, EventArgs e)
     {
         if (sender is not ChatTurnView view || !TryGetPendingTurn(view, out _))
         {
+            _logger.EditActionIgnored();
             return;
         }
 
         RecordDisposition(view, EditDisposition.Rejected);
         SetStatus("Edit rejected.");
+        _logger.EditRejected(view.SessionTurnIndex!.Value);
     }
 
     private bool TryGetPendingTurn(ChatTurnView view, out ChatTurn turn)

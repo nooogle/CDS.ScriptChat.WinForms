@@ -20,7 +20,7 @@ public sealed class ScriptChatConfigurationEventArgs : EventArgs
 
     /// <summary>
     /// Gets the applied configuration. Carries the user's API key, so treat it as a secret:
-    /// pass it to <see cref="ScriptChatClientFactory.Create"/> and nowhere else (D3).
+    /// pass it to <see cref="ScriptChatClientFactory.Create(ScriptChatClientOptions)"/> and nowhere else (D3).
     /// </summary>
     public ScriptChatClientOptions ClientOptions { get; }
 }

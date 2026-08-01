@@ -70,6 +70,33 @@ public sealed class EditAcceptanceTests
     }
 
     [TestMethod]
+    public async Task Accept_ProposalWithBareNewlines_AppliesItWithPlatformLineEndings()
+    {
+        // Models emit "\n"; a plain WinForms TextBox renders that as a single line.
+        using var harness = await ProposingPanelHarness.CreateAsync(
+            proposedScript: "var x = 2;\nvar y = 3;");
+
+        harness.ClickAccept();
+
+        harness.CurrentScript.Should().Be($"var x = 2;{Environment.NewLine}var y = 3;");
+    }
+
+    [TestMethod]
+    public async Task Accept_ProposalWithBareNewlines_RaisesEditAcceptedWithTheNormalisedScript()
+    {
+        using var harness = await ProposingPanelHarness.CreateAsync(
+            proposedScript: "var x = 2;\nvar y = 3;");
+        ScriptEditAcceptedEventArgs? raised = null;
+        harness.Panel.EditAccepted += (_, e) => raised = e;
+
+        harness.ClickAccept();
+
+        // The event must report what actually reached the editor, not the raw proposal.
+        raised.Should().NotBeNull();
+        raised!.ProposedCode.Should().Be($"var x = 2;{Environment.NewLine}var y = 3;");
+    }
+
+    [TestMethod]
     public async Task Reject_Clicked_LeavesTheScriptUntouched()
     {
         using var harness = await ProposingPanelHarness.CreateAsync();
@@ -165,13 +192,14 @@ public sealed class EditAcceptanceTests
         public static async Task<ProposingPanelHarness> CreateAsync(
             bool proposeEdit = true,
             bool wireSetter = true,
-            Action<string>? setterBehaviour = null)
+            Action<string>? setterBehaviour = null,
+            string proposedScript = ProposedScript)
         {
             var client = proposeEdit
                 ? new FakeChatClient(
                     FakeChatClient.ToolCall("propose_script_edit", new Dictionary<string, object?>
                     {
-                        ["newScript"] = ProposedScript,
+                        ["newScript"] = proposedScript,
                         ["summary"] = "Bump x to 2",
                     }),
                     FakeChatClient.Text("I have bumped x to 2."))

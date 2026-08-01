@@ -22,15 +22,18 @@ namespace CDS.ScriptChat.TestHost;
 ///   <item><description><c>CountMotes</c> returns a report object, not an <see cref="int"/>.</description></item>
 ///   <item><description>Components come from <c>Workspace.Acquire</c>, not a <c>Get…</c> method.</description></item>
 /// </list>
+/// <para>
+/// Unguessable names need a way in, or a plain-English request is unanswerable: the model
+/// probes for <c>Denoise</c>, misses, and correctly declines to invent an API. The namespace
+/// entries added by <see cref="BuildCatalogue"/> are that way in — looking one up lists what it
+/// contains. Discovery stays a lookup; only the starting point is given away.
+/// </para>
 /// </remarks>
 internal static class KestrelApiCatalogue
 {
-    /// <summary>
-    /// Gets the invented symbols, keyed by the name a caller would ask for. Lookup is
-    /// case-insensitive so the model is not punished for casing.
-    /// </summary>
-    public static IReadOnlyDictionary<string, SymbolLookupResult> Symbols { get; } =
-        new Dictionary<string, SymbolLookupResult>(StringComparer.OrdinalIgnoreCase)
+    /// <summary>The invented symbols themselves, before the namespace index is derived from them.</summary>
+    private static readonly Dictionary<string, SymbolLookupResult> s_symbols =
+        new(StringComparer.OrdinalIgnoreCase)
         {
             ["Sift"] = new SymbolLookupResult
             {
@@ -85,14 +88,33 @@ internal static class KestrelApiCatalogue
                     + "everything.",
             },
 
+            ["Workspace"] = new SymbolLookupResult
+            {
+                Signature = "KestrelWorkspace Workspace",
+                Namespace = "Kestrel.Pipeline",
+                XmlDocSummary =
+                    "A host-supplied global, like 'frame'. The script's entry point to the pipeline: "
+                    + "Acquire is an instance method, and this is what you call it on. Not needed for "
+                    + "Kestrel.Imaging work, which is all static methods over a frame.",
+            },
+
+            ["KestrelWorkspace"] = new SymbolLookupResult
+            {
+                Signature = "public sealed class KestrelWorkspace",
+                Namespace = "Kestrel.Pipeline",
+                XmlDocSummary =
+                    "The type of the Workspace global. Members: T Acquire<T>(string slot).",
+            },
+
             ["Acquire"] = new SymbolLookupResult
             {
                 Signature = "public T Acquire<T>(string slot) where T : class",
                 Namespace = "Kestrel.Pipeline",
                 XmlDocSummary =
-                    "Fetches a pipeline component from the workspace by slot name. Slot names are "
-                    + "declared in the .kestrel manifest, never in code. Throws KestrelSlotException if "
-                    + "the slot is missing or the type does not match.",
+                    "Fetches a pipeline component from the workspace by slot name. Call it on the "
+                    + "Workspace global. Slot names are declared in the .kestrel manifest, never in "
+                    + "code. Throws KestrelSlotException if the slot is missing or the type does not "
+                    + "match.",
             },
 
             ["KestrelFrame"] = new SymbolLookupResult
@@ -113,4 +135,50 @@ internal static class KestrelApiCatalogue
                     + "1.0 is a no-op.",
             },
         };
+
+    /// <summary>
+    /// Gets the invented symbols, keyed by the name a caller would ask for. Lookup is
+    /// case-insensitive so the model is not punished for casing.
+    /// </summary>
+    public static IReadOnlyDictionary<string, SymbolLookupResult> Symbols { get; } = BuildCatalogue();
+
+    /// <summary>
+    /// Adds one entry per namespace, listing its members, plus a root entry listing the
+    /// namespaces. Derived from <see cref="s_symbols"/> rather than written out, so a symbol
+    /// added above cannot go missing from the index.
+    /// </summary>
+    private static IReadOnlyDictionary<string, SymbolLookupResult> BuildCatalogue()
+    {
+        var catalogue = new Dictionary<string, SymbolLookupResult>(s_symbols, StringComparer.OrdinalIgnoreCase);
+
+        var namespaces = s_symbols
+            .GroupBy(entry => entry.Value.Namespace, StringComparer.Ordinal)
+            .OrderBy(group => group.Key, StringComparer.Ordinal)
+            .ToList();
+
+        foreach (var group in namespaces)
+        {
+            var members = string.Join(", ", group.Select(entry => entry.Key).Order(StringComparer.Ordinal));
+
+            catalogue[group.Key] = new SymbolLookupResult
+            {
+                Signature = $"namespace {group.Key}",
+                Namespace = group.Key,
+                XmlDocSummary =
+                    $"Contains: {members}. Look each one up for its signature and rules before "
+                    + "calling it — the names do not follow the conventions of other imaging libraries.",
+            };
+        }
+
+        catalogue["Kestrel"] = new SymbolLookupResult
+        {
+            Signature = "namespace Kestrel",
+            Namespace = "Kestrel",
+            XmlDocSummary =
+                $"The root namespace. Sub-namespaces: {string.Join(", ", namespaces.Select(group => group.Key))}. "
+                + "Look one up to list what it contains.",
+        };
+
+        return catalogue;
+    }
 }

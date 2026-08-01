@@ -21,6 +21,9 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\src\CDS.ScriptChat.WinForms\CDS.ScriptChat.WinForms.csproj" />
+
+		<!-- The sample host owns the CSV logging provider, so its formatting is covered here. -->
+		<ProjectReference Include="..\..\samples\CDS.ScriptChat.TestHost\CDS.ScriptChat.TestHost.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
