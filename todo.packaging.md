@@ -189,6 +189,7 @@ Do this consciously, not as a side effect of pushing.
 
 ## Phase 5 — GitHub Actions: CI
 
+- [ ] We have a new standards protocol, review and refresh this task and review with me before working on the items. See: "C:\dev\CI-CD-STANDARDS.md"
 - [ ] `.github/workflows/ci.yml` — build + test on every push and pull request.
       **Do not copy CDS.CSharpScripting2's trigger**: that file is named "CI" but
       only fires on `v*` tags, so it never guards a normal commit. Trigger on
