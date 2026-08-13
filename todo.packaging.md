@@ -262,6 +262,48 @@ what is lost is the exclusivity and the blue "reserved prefix" tick.
   by unrelated publishers, so nuget.org will not reserve it. See phase 6 for
   what remains possible.
 
+---
+
+## Not packaging — API feedback from a consuming host
+
+Parked here because this is the file that gets read, not because it belongs to the
+phases above. Raised 2026-08-11 from the OpenCvSharp Playground / Workbench
+extraction; nothing has been acted on in this repo.
+
+- [ ] **A host with more than one script has to build the multi-target panel
+      itself.** `ScriptChatPanel` is one target: `ScriptTextProvider`,
+      `ScriptTextSetter` and one attached `ScriptChatSession`. The Playground has
+      two scripts (workspace and processing) and so wrote ~300 lines on top —
+      `ScriptChatHostPanel` (a selector, a session per target, and a single shared
+      `IChatClient` whose lifetime spans both), `ScriptChatTarget` (display name +
+      the two delegates + a `Func<ScriptChatSessionOptions>` factory, so each
+      conversation's orientation is built when it starts rather than when the app
+      did), and `ScriptChatSettingsForm` (a `Form` wrapper around
+      `ScriptChatSettingsPanel`, which ships as a panel only).
+      **None of it is Playground-specific** — it is "one panel, N scripts", which
+      any host with more than one script needs. Worth considering for the library:
+      a `SetTargets(params ScriptChatTarget[])` shape, and a settings *form*
+      alongside the settings panel.
+      Source to lift, if useful: `src\CDS.OpenCvSharpPlayground.App\`
+      `ScriptChatHostPanel.cs`, `ScriptChatTarget.cs`, `ScriptChatSettingsForm.cs`
+      in `C:\dev\nooogle\CDS.OpenCvSharpPlayground`.
+
+- [ ] **No local or self-hosted provider.** `ScriptChatProvider` is
+      `Claude | OpenAI | Grok`, and `ScriptChatClientOptions` has no base-URL
+      override, so an OpenAI-compatible local endpoint (Ollama, LM Studio,
+      llama.cpp) cannot be pointed at. Not a blocker for any current host — noted
+      because a demo that runs without the user supplying a cloud key would be
+      worth having, and D2 already confines provider knowledge to the enum and
+      `ScriptChatClientFactory`, so the change is contained.
+
+**Explicitly not a complaint about the design.** `ISymbolLookupProvider`'s D15
+rule — define the abstraction, never implement it in-library — is exactly right,
+and `SymbolLookupResult` being four plain strings is what let the Workbench answer
+`lookup_symbol` from a live Roslyn compilation without this library knowing Roslyn
+exists. Both items above are missing conveniences, not wrong seams.
+
+---
+
 ## Status
 
 Phases 1b, 2 and 3 are **done** — `pack-local.ps1` produces both packages into

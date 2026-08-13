@@ -27,7 +27,7 @@
 	<ItemGroup>
 		<!-- Referenced directly rather than relied on transitively: the LoggerMessage source
 		     generator ships in this package, and analysers do not flow across a ProjectReference. -->
-		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
 	</ItemGroup>
 
 	<ItemGroup>

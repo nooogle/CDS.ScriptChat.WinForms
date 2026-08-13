@@ -11,8 +11,8 @@
 	<ItemGroup>
 		<!-- The concrete logging pipeline is the host's to choose, not the library's; this one
 		     writes a CSV per run. See Logging\CsvLoggerProvider.cs. -->
-		<PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.10" />
-		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.10" />
+		<PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.11" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.11" />
 	</ItemGroup>
 
 	<ItemGroup>
