@@ -1,8 +1,12 @@
+using System.ClientModel;
+
 using Anthropic;
 
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+
+using OpenAI;
 
 namespace CDS.ScriptChat.Core;
 
@@ -38,8 +42,8 @@ public static class ScriptChatClientFactory
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">The API key or model ID is missing.</exception>
     /// <exception cref="NotSupportedException">
-    /// The provider is recognised but not yet wired up. Claude is wired end to end first;
-    /// OpenAI and Grok follow once the shape is confirmed working.
+    /// The provider is recognised but not yet wired up. Claude and OpenAI are wired end to end;
+    /// Grok follows once a host needs it.
     /// </exception>
     public static IChatClient Create(ScriptChatClientOptions options, ILoggerFactory? loggerFactory)
     {
@@ -73,9 +77,10 @@ public static class ScriptChatClientFactory
         var client = options.Provider switch
         {
             ScriptChatProvider.Claude => CreateClaudeClient(options),
+            ScriptChatProvider.OpenAI => CreateOpenAIClient(options),
 
-            ScriptChatProvider.OpenAI or ScriptChatProvider.Grok => throw new NotSupportedException(
-                $"Provider '{options.Provider}' is not wired up yet. Claude is being proven end to end first; the others follow once the shape is confirmed."),
+            ScriptChatProvider.Grok => throw new NotSupportedException(
+                $"Provider '{options.Provider}' is not wired up yet. Claude and OpenAI are proven end to end first; Grok follows once there's a host that needs it."),
 
             _ => throw new ArgumentOutOfRangeException(
                 nameof(options), options.Provider, "Unknown provider."),
@@ -89,5 +94,20 @@ public static class ScriptChatClientFactory
     {
         var client = new AnthropicClient { ApiKey = options.ApiKey };
         return client.AsIChatClient(options.ModelId, options.MaxOutputTokens);
+    }
+
+    private static IChatClient CreateOpenAIClient(ScriptChatClientOptions options)
+    {
+        var client = new OpenAIClient(new ApiKeyCredential(options.ApiKey));
+
+        // Unlike Anthropic.AsIChatClient(modelId, maxOutputTokens), the OpenAI adapter has no
+        // constructor overload to bake in a default token ceiling — ConfigureOptions is the
+        // equivalent for this provider. ??= so an explicit per-call value (none exist yet) would
+        // still win.
+        return client.GetChatClient(options.ModelId)
+            .AsIChatClient()
+            .AsBuilder()
+            .ConfigureOptions(chatOptions => chatOptions.MaxOutputTokens ??= options.MaxOutputTokens)
+            .Build();
     }
 }

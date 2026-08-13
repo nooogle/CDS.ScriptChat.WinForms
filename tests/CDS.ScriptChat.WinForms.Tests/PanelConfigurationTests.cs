@@ -47,7 +47,7 @@ public sealed class PanelConfigurationTests
     {
         using var panel = new ScriptChatPanel { ScriptTextProvider = () => "var x = 1;" };
 
-        panel.Configure(ClaudeOptions with { Provider = ScriptChatProvider.OpenAI, ModelId = "gpt-5" });
+        panel.Configure(ClaudeOptions with { Provider = ScriptChatProvider.Grok, ModelId = "grok-4" });
 
         panel.IsReady.Should().BeFalse();
     }

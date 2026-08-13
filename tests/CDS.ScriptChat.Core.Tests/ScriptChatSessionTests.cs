@@ -229,6 +229,57 @@ public sealed class ScriptChatSessionTests
     }
 
     [TestMethod]
+    public async Task SetEditDisposition_Accepted_RewritesTheFrozenToolResultForTheNextTurn()
+    {
+        var client = new FakeChatClient(
+            FakeChatClient.ToolCall("propose_script_edit", new Dictionary<string, object?>
+            {
+                ["newScript"] = "var x = 2;",
+                ["summary"] = "Bump x",
+            }),
+            FakeChatClient.Text("Done."),
+            FakeChatClient.Text("Sure, anything else?"));
+
+        var session = new ScriptChatSession(client);
+        await session.SendAsync("Set x to 2", SampleScript);
+
+        session.SetEditDisposition(session.Turns.Count - 1, EditDisposition.Accepted);
+        await session.SendAsync("Thanks", "var x = 2;");
+
+        GetToolResultTexts(client.ReceivedRequests[2])
+            .Should().ContainSingle(text => text!.Contains("accepted", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    public async Task SetEditDisposition_Rejected_RewritesTheFrozenToolResultForTheNextTurn()
+    {
+        var client = new FakeChatClient(
+            FakeChatClient.ToolCall("propose_script_edit", new Dictionary<string, object?>
+            {
+                ["newScript"] = "var x = 2;",
+                ["summary"] = "Bump x",
+            }),
+            FakeChatClient.Text("Done."),
+            FakeChatClient.Text("Understood, keeping it as is."));
+
+        var session = new ScriptChatSession(client);
+        await session.SendAsync("Set x to 2", SampleScript);
+
+        session.SetEditDisposition(session.Turns.Count - 1, EditDisposition.Rejected);
+        await session.SendAsync("Actually leave it", SampleScript);
+
+        GetToolResultTexts(client.ReceivedRequests[2])
+            .Should().ContainSingle(text => text!.Contains("rejected", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static IEnumerable<string?> GetToolResultTexts(IEnumerable<ChatMessage> messages) =>
+        messages
+            .Where(m => m.Role == ChatRole.Tool)
+            .SelectMany(m => m.Contents)
+            .OfType<FunctionResultContent>()
+            .Select(c => c.Result?.ToString());
+
+    [TestMethod]
     public async Task Reset_AfterATurn_ClearsTranscriptAndStartsAFreshSystemPrompt()
     {
         var client = new FakeChatClient(

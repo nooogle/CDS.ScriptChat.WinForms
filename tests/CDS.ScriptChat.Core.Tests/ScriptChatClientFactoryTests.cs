@@ -22,6 +22,21 @@ public sealed class ScriptChatClientFactoryTests
     }
 
     [TestMethod]
+    public void Create_OpenAIWithValidOptions_ReturnsAClient()
+    {
+        var options = new ScriptChatClientOptions
+        {
+            Provider = ScriptChatProvider.OpenAI,
+            ApiKey = "sk-not-a-real-key",
+            ModelId = ScriptChatModels.DefaultForProvider(ScriptChatProvider.OpenAI),
+        };
+
+        using var client = ScriptChatClientFactory.Create(options);
+
+        client.Should().NotBeNull();
+    }
+
+    [TestMethod]
     public void Create_NoApiKey_ThrowsSoTheFeatureStaysInert()
     {
         var options = new ScriptChatClientOptions
@@ -68,15 +83,13 @@ public sealed class ScriptChatClientFactoryTests
     }
 
     [TestMethod]
-    [DataRow(ScriptChatProvider.OpenAI)]
-    [DataRow(ScriptChatProvider.Grok)]
-    public void Create_ProviderNotYetWiredUp_ThrowsNotSupported(ScriptChatProvider provider)
+    public void Create_Grok_ThrowsNotSupported()
     {
         var options = new ScriptChatClientOptions
         {
-            Provider = provider,
+            Provider = ScriptChatProvider.Grok,
             ApiKey = "not-a-real-key",
-            ModelId = ScriptChatModels.DefaultForProvider(provider),
+            ModelId = ScriptChatModels.DefaultForProvider(ScriptChatProvider.Grok),
         };
 
         var act = () => ScriptChatClientFactory.Create(options);

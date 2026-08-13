@@ -38,6 +38,15 @@ public sealed class ScriptChatSession
     /// </summary>
     private readonly List<string> _turnBaselines = [];
 
+    /// <summary>
+    /// The <c>propose_script_edit</c> tool-result content for each turn, parallel to
+    /// <see cref="_turns"/>; <see langword="null"/> for turns that proposed no edit. Kept so
+    /// <see cref="SetEditDisposition"/> can update the frozen "not applied yet" result text once
+    /// the user actually accepts or rejects — otherwise a later turn's history tells the model
+    /// its edit is still pending even after the user has decided (UC2).
+    /// </summary>
+    private readonly List<FunctionResultContent?> _turnProposalResults = [];
+
     private readonly List<string> _symbolsLookedUp = [];
     private readonly IList<AITool> _tools;
 
@@ -170,6 +179,7 @@ public sealed class ScriptChatSession
 
             var text = string.IsNullOrWhiteSpace(response.Text) ? null : response.Text.Trim();
             var proposal = _capturedProposal;
+            var proposalResultContent = proposal is null ? null : FindProposalResultContent(response.Messages);
 
             AddTurn(
                 new ChatTurn(
@@ -178,7 +188,8 @@ public sealed class ScriptChatSession
                     proposal?.ProposedCode,
                     proposal?.Summary,
                     proposal is null ? EditDisposition.None : EditDisposition.PendingReview),
-                currentScript);
+                currentScript,
+                proposalResultContent);
 
             _logger.TurnCompleted(
                 turnIndex,
@@ -220,6 +231,11 @@ public sealed class ScriptChatSession
     /// <param name="disposition">
     /// <see cref="EditDisposition.Accepted"/> or <see cref="EditDisposition.Rejected"/>.
     /// </param>
+    /// <remarks>
+    /// Also rewrites that turn's <c>propose_script_edit</c> tool-result content in
+    /// <see cref="_history"/> from "not applied yet" to what actually happened, so a later turn
+    /// doesn't send the model a history where it still believes the edit is undecided (UC2).
+    /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="turnIndex"/> is out of range.</exception>
     /// <exception cref="ArgumentException"><paramref name="disposition"/> is not a user decision.</exception>
     /// <exception cref="InvalidOperationException">That turn proposed no edit.</exception>
@@ -242,6 +258,15 @@ public sealed class ScriptChatSession
         }
 
         _turns[turnIndex] = turn with { Disposition = disposition };
+
+        var resultContent = _turnProposalResults[turnIndex];
+        if (resultContent is not null)
+        {
+            resultContent.Result = disposition == EditDisposition.Accepted
+                ? "The user accepted this edit. The script now reflects it."
+                : "The user rejected this edit. The script is unchanged from before this proposal.";
+        }
+
         _logger.EditDispositionRecorded(turnIndex, disposition);
     }
 
@@ -256,15 +281,44 @@ public sealed class ScriptChatSession
         _history.Clear();
         _turns.Clear();
         _turnBaselines.Clear();
+        _turnProposalResults.Clear();
         _symbolsLookedUp.Clear();
         _capturedProposal = null;
     }
 
     /// <summary>Appends a turn and the script it was sent against, keeping the two in step.</summary>
-    private void AddTurn(ChatTurn turn, string baselineScript)
+    private void AddTurn(ChatTurn turn, string baselineScript, FunctionResultContent? proposalResultContent = null)
     {
         _turns.Add(turn);
         _turnBaselines.Add(baselineScript);
+        _turnProposalResults.Add(proposalResultContent);
+    }
+
+    /// <summary>
+    /// Finds the tool-result content for the turn's <c>propose_script_edit</c> call, so
+    /// <see cref="SetEditDisposition"/> can rewrite it later. If the model called the tool more
+    /// than once, the last call wins — matching <see cref="ProposeScriptEdit"/>'s own semantics.
+    /// </summary>
+    private static FunctionResultContent? FindProposalResultContent(IEnumerable<ChatMessage> messages)
+    {
+        string? callId = null;
+        foreach (var content in messages.SelectMany(m => m.Contents))
+        {
+            if (content is FunctionCallContent { Name: "propose_script_edit" } call)
+            {
+                callId = call.CallId;
+            }
+        }
+
+        if (callId is null)
+        {
+            return null;
+        }
+
+        return messages
+            .SelectMany(m => m.Contents)
+            .OfType<FunctionResultContent>()
+            .FirstOrDefault(result => result.CallId == callId);
     }
 
     private string BuildSystemPrompt()

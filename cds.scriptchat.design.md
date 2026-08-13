@@ -9,9 +9,32 @@ host app — the same library should work for Fable's processing scripts, a futu
 GroundTruth scripting surface, or the OpenCvSharp Playground app, differing only in
 which host app supplies the API context and symbol lookups.
 
-This document is the kickoff input for a Claude Code session building it. Milestone
-1 scope is marked explicitly below; later milestones are named but not detailed yet,
-in keeping with the one-milestone-at-a-time approach used for GroundTruth and Fable.
+This document was the kickoff input for the Claude Code session that built Milestone
+1; it now doubles as the running design record. Milestone 1 is **complete** — see
+Status below — and later milestones are named but not detailed until they're
+scoped, in keeping with the one-milestone-at-a-time approach used for GroundTruth
+and Fable.
+
+## Status
+
+- **Milestone 1** (UC1, UC3, UC4, UC6) — **complete**. All build-order steps 1–6
+  done, acceptance criteria met, tests passing. Packages published as `1.0.0`
+  (see `todo.packaging.md`).
+- **Outstanding from Milestone 1** (not scope gaps, but unfinished follow-through):
+  - The pre-release logging checklist under "What must be removed or turned off
+    before release" is still unaddressed — the test host still runs at
+    `LogLevel.Trace` (`samples/CDS.ScriptChat.TestHost/Program.cs`). Must be
+    resolved before Fable or the Playground consumes the library, per D3.
+  - ~~`ScriptChatClientFactory` throws `NotSupportedException` for `OpenAI`~~ —
+    closed by milestone 2. `Grok` still throws; remains deferred.
+- **Milestone 2** (UC2, OpenAI wiring) — **build complete, tests passing**
+  (58 Core + 76 WinForms, solution builds clean). `ScriptChatClientFactory` now
+  wires `Microsoft.Extensions.AI.OpenAI` for real; `ScriptChatSession` rewrites
+  the frozen `propose_script_edit` tool-result on accept/reject so a later
+  turn's history matches what actually happened to the script. **Not yet
+  exercised against the real OpenAI API** — covered so far only by unit tests
+  against a fake key and a fake `IChatClient`; a live smoke test with a real
+  key is still outstanding before calling this done in practice.
 
 ## Non-goals (v1)
 
@@ -165,9 +188,13 @@ Owner: Jon. Due: before `CDS.ScriptChat` is consumed by any app other than the t
 - **UC1** — Single-turn edit request against the script open in the host app's
   editor (e.g. "add denoising then find contours"). **In scope, milestone 1.**
 - **UC2** — Multi-turn conversation refining a script across several requests,
-  each accepted edit becoming the new baseline. **Milestone 2** (UC1 alone is
-  effectively single-turn history; UC2 is about accept/reject affecting what
-  context later turns see).
+  each accepted edit becoming the new baseline. **In scope, milestone 2.** Most
+  of the plumbing already exists — `ScriptChatSession` never clears `_history`
+  between turns, and `ScriptTextProvider`/`ScriptTextSetter` mean an accepted
+  edit is read fresh on the next send. The actual gap: `propose_script_edit`'s
+  tool-result message is frozen as "not applied until they accept it" in
+  history forever, so after a **rejected** edit the model's own memory of what
+  happened can drift out of step with the script it's shown on a later turn.
 - **UC3** — Pure Q&A/explanation turn producing no code change (e.g. "why did
   the contour count drop after this change?"). **In scope, milestone 1** — the
   session already distinguishes "text only" from "tool call" responses, so this
@@ -175,8 +202,10 @@ Owner: Jon. Due: before `CDS.ScriptChat` is consumed by any app other than the t
 - **UC4** — On-demand symbol lookup mid-conversation via `lookup_symbol`, answered
   by the host's `ISymbolLookupProvider`. **In scope, milestone 1** — needed for UC1
   to produce reliably correct code.
-- **UC5** — Provider/model switch mid-session. **Milestone 2 or later** —
-  resets to a fresh conversation on switch, per D10.
+- **UC5** — Provider/model switch mid-session. **Deferred past milestone 2** —
+  resets to a fresh conversation on switch, per D10. Milestone 2 wires up a
+  second working provider (OpenAI) but does not scope or test switching to it
+  mid-session; that remains for a later milestone.
 - **UC6** — BYOK onboarding: enter key, choose provider/model, test connection.
   **In scope, milestone 1.**
 - **UC7** — Streaming display. **Explicitly deferred**, see D9.
@@ -185,7 +214,60 @@ Owner: Jon. Due: before `CDS.ScriptChat` is consumed by any app other than the t
 
 UC1, UC3, UC4, UC6. Single provider wired end-to-end first (Claude, since the
 factory and tool-call handling are already proven from earlier prototyping),
-then OpenAI/Grok added once the shape is confirmed working.
+then OpenAI/Grok added once the shape is confirmed working. **Complete.**
+
+### Milestone 2 scope
+
+UC2, plus finishing the provider half of D2/Milestone 1: wiring `ScriptChatProvider.OpenAI`
+in `ScriptChatClientFactory` so it constructs a real `IChatClient` instead of throwing
+`NotSupportedException`. Deliberately **not** in scope:
+
+- **Grok** — stays unwired; nothing has asked for it yet, and doing one provider
+  properly (OpenAI, since it has the most obvious host demand) is a cleaner unit of
+  work than doing two half-verified ones.
+- **UC5 (mid-session provider switch)** — a second working provider makes this
+  possible to build, but exercising and testing that workflow is separate work
+  left for a later milestone.
+- **UC7 (streaming)**, **multi-script host support**, and **local/self-hosted
+  provider support** (both raised as parked feedback in `todo.packaging.md`),
+  and the two "Future milestones" items below — all explicitly deferred, not to
+  be picked up opportunistically during milestone 2.
+
+#### Build order (milestone 2)
+
+1. **OpenAI wiring** — **done.** `CreateOpenAIClient` added alongside
+   `CreateClaudeClient` in `ScriptChatClientFactory`, using
+   `Microsoft.Extensions.AI.OpenAI` 10.9.0 (`OpenAIClient(...).GetChatClient(modelId).AsIChatClient()`).
+   Since that adapter has no constructor overload to bake in a default token
+   ceiling the way Anthropic's does, the ceiling is applied via
+   `.AsBuilder().ConfigureOptions(o => o.MaxOutputTokens ??= options.MaxOutputTokens)`
+   instead. `ScriptChatProvider.Grok` still throws `NotSupportedException`.
+2. **Disposition reconciliation in `ScriptChatSession`** — **done.** A new
+   `_turnProposalResults` list (parallel to `_turns`) keeps a reference to each
+   turn's `propose_script_edit` `FunctionResultContent`. `SetEditDisposition`
+   mutates that object's `Result` in place — it's the same instance already
+   sitting in `_history`, so no extra history-editing step is needed — to "The
+   user accepted/rejected this edit..." once the user decides, replacing the
+   frozen "not applied yet" text.
+3. **Verification** — unit-level done: 58 Core + 76 WinForms tests pass,
+   solution builds clean. **Not done**: a live smoke test against the real
+   OpenAI API (needs a real key — BYOK, so that's down to whoever runs the test
+   host next) and a manual UC2 walkthrough in the test host UI.
+
+#### Acceptance criteria (milestone 2)
+
+- A configured OpenAI API key and model can complete a real UC1-style turn
+  (text-only answer, and a turn that proposes an edit shown as a diff) —
+  matching Claude's behaviour, not a stub. **Unverified against the real API**
+  — only covered by unit tests against a fake key so far.
+- After a multi-turn conversation where one proposed edit is **rejected** and a
+  later one is **accepted**, the model's replies stay consistent with the
+  script's actual state — it doesn't act as though a rejected edit took effect.
+  **Covered by unit tests** (`SetEditDisposition_Accepted/Rejected_RewritesTheFrozenToolResultForTheNextTurn`)
+  asserting the rewritten tool-result text reaches the next provider call;
+  not yet walked through manually against a real model's actual replies.
+- All milestone 1 acceptance criteria still pass (regression bar) — **met**,
+  full suite green.
 
 ## Data Model
 
@@ -253,6 +335,12 @@ history, matching how the conversation actually happened.
   for the host-app orientation file (e.g. `scriptchat.context.yaml` at the
   host app's root?), and the exact shape of the fallback property interface,
   are left for build-order step 1 to propose rather than fixed here.
+- ~~**Milestone 2 — OpenAI adapter package**~~ — resolved: `Microsoft.Extensions.AI.OpenAI`
+  10.9.0, matching the `Microsoft.Extensions.AI` version already in use.
+- ~~**Milestone 2 — disposition reconciliation mechanism**~~ — resolved: mutate
+  the stored `FunctionResultContent.Result` in place (it's settable, and the
+  same object instance already sits in `_history`), rather than injecting a
+  separate note.
 
 ## Future milestones (deferred by design, not gaps)
 
@@ -265,10 +353,18 @@ history, matching how the conversation actually happened.
   narrow scope shows where it actually falls short in practice. Added as new
   members with default implementations so existing host implementations keep
   compiling.
+- **Multi-script host support**: real feedback from extracting the OpenCvSharp
+  Playground app, parked in `todo.packaging.md` ("Not packaging — API feedback
+  from a consuming host"). A host with more than one script has to build its
+  own selector/session-per-target scaffolding today; worth a `SetTargets(...)`
+  shape in the library once a second consuming host confirms the need.
+- **Local/self-hosted provider** (Ollama, LM Studio, llama.cpp): no base-URL
+  override exists today. Also parked in `todo.packaging.md`. Realistically
+  rides on top of the OpenAI wiring landing in milestone 2, once that's proven.
 
 ---
 
-## Kickoff prompt (for the Claude Code session)
+## Kickoff prompt (historical — Milestone 1, complete)
 
 > Read this document in full before writing any code. Scope this session to
 > **Milestone 1** only (build-order steps 1–3, plus enough of step 4 to display
@@ -279,3 +375,21 @@ history, matching how the conversation actually happened.
 > architecture decision not already settled by the Decision Log above; flag
 > disagreement rather than silently deviating. British English in comments and
 > docs.
+
+## Kickoff prompt (Milestone 2)
+
+> Read this document in full before writing any code, especially the Status
+> section and "Milestone 2 scope" under Use Cases. Scope this session to
+> **Milestone 2 only**: build-order steps 1–3 there (OpenAI wiring in
+> `ScriptChatClientFactory`, disposition reconciliation in `ScriptChatSession`
+> for UC2, and end-to-end verification in the test host). Do not implement
+> Grok, UC5 (mid-session provider switch), UC7 (streaming), multi-script host
+> support, or local/self-hosted provider support — all explicitly deferred, see
+> "Milestone 2 scope" and "Future milestones" above. The two open questions
+> flagged for milestone 2 (OpenAI adapter package choice; disposition
+> reconciliation mechanism) are yours to propose and confirm, not pre-decided.
+> All UI must be standard WinForms Designer classes (`.cs`/`.Designer.cs`/`.resx`,
+> `InitializeComponent()`) per D14 — this milestone shouldn't need new UI, but if
+> it does, the same rule applies. Ask before making any architecture decision not
+> already settled by the Decision Log; flag disagreement rather than silently
+> deviating. British English in comments and docs.
