@@ -37,13 +37,15 @@ public sealed class ScriptChatClientFactoryTests
     }
 
     [TestMethod]
-    public void Create_NoApiKey_ThrowsSoTheFeatureStaysInert()
+    [DataRow(ScriptChatProvider.Claude)]
+    [DataRow(ScriptChatProvider.OpenAI)]
+    public void Create_NoApiKey_ThrowsSoTheFeatureStaysInert(ScriptChatProvider provider)
     {
         var options = new ScriptChatClientOptions
         {
-            Provider = ScriptChatProvider.Claude,
+            Provider = provider,
             ApiKey = "   ",
-            ModelId = ScriptChatModels.ClaudeDefault,
+            ModelId = ScriptChatModels.DefaultForProvider(provider),
         };
 
         var act = () => ScriptChatClientFactory.Create(options);
@@ -52,12 +54,14 @@ public sealed class ScriptChatClientFactoryTests
     }
 
     [TestMethod]
-    public void Create_NoModelId_Throws()
+    [DataRow(ScriptChatProvider.Claude)]
+    [DataRow(ScriptChatProvider.OpenAI)]
+    public void Create_NoModelId_Throws(ScriptChatProvider provider)
     {
         var options = new ScriptChatClientOptions
         {
-            Provider = ScriptChatProvider.Claude,
-            ApiKey = "sk-ant-not-a-real-key",
+            Provider = provider,
+            ApiKey = "sk-not-a-real-key",
             ModelId = "",
         };
 
@@ -67,13 +71,15 @@ public sealed class ScriptChatClientFactoryTests
     }
 
     [TestMethod]
-    public void Create_NonPositiveMaxOutputTokens_Throws()
+    [DataRow(ScriptChatProvider.Claude)]
+    [DataRow(ScriptChatProvider.OpenAI)]
+    public void Create_NonPositiveMaxOutputTokens_Throws(ScriptChatProvider provider)
     {
         var options = new ScriptChatClientOptions
         {
-            Provider = ScriptChatProvider.Claude,
-            ApiKey = "sk-ant-not-a-real-key",
-            ModelId = ScriptChatModels.ClaudeDefault,
+            Provider = provider,
+            ApiKey = "sk-not-a-real-key",
+            ModelId = ScriptChatModels.DefaultForProvider(provider),
             MaxOutputTokens = 0,
         };
 

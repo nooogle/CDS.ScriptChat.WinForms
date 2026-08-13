@@ -100,6 +100,11 @@ public static class ScriptChatClientFactory
     {
         var client = new OpenAIClient(new ApiKeyCredential(options.ApiKey));
 
+        // Captured as a local rather than closing over `options` itself, so the built client
+        // doesn't hold a live reference to the API key for its whole lifetime (D3) just to reach
+        // one unrelated int.
+        var maxOutputTokens = options.MaxOutputTokens;
+
         // Unlike Anthropic.AsIChatClient(modelId, maxOutputTokens), the OpenAI adapter has no
         // constructor overload to bake in a default token ceiling — ConfigureOptions is the
         // equivalent for this provider. ??= so an explicit per-call value (none exist yet) would
@@ -107,7 +112,7 @@ public static class ScriptChatClientFactory
         return client.GetChatClient(options.ModelId)
             .AsIChatClient()
             .AsBuilder()
-            .ConfigureOptions(chatOptions => chatOptions.MaxOutputTokens ??= options.MaxOutputTokens)
+            .ConfigureOptions(chatOptions => chatOptions.MaxOutputTokens ??= maxOutputTokens)
             .Build();
     }
 }

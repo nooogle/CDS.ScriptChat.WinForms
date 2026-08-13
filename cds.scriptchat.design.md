@@ -27,14 +27,52 @@ and Fable.
     resolved before Fable or the Playground consumes the library, per D3.
   - ~~`ScriptChatClientFactory` throws `NotSupportedException` for `OpenAI`~~ —
     closed by milestone 2. `Grok` still throws; remains deferred.
-- **Milestone 2** (UC2, OpenAI wiring) — **build complete, tests passing**
-  (58 Core + 76 WinForms, solution builds clean). `ScriptChatClientFactory` now
+- **Milestone 2** (UC2, OpenAI wiring) — **build complete, tests passing, reviewed**
+  (65 Core + 77 WinForms, solution builds clean, zero warnings). `ScriptChatClientFactory`
   wires `Microsoft.Extensions.AI.OpenAI` for real; `ScriptChatSession` rewrites
   the frozen `propose_script_edit` tool-result on accept/reject so a later
-  turn's history matches what actually happened to the script. **Not yet
-  exercised against the real OpenAI API** — covered so far only by unit tests
-  against a fake key and a fake `IChatClient`; a live smoke test with a real
-  key is still outstanding before calling this done in practice.
+  turn's history matches what actually happened to the script (UC2).
+  - **8-angle code review run against the diff** (correctness, efficiency, reuse,
+    simplification, altitude, CLAUDE.md conventions, removed-behaviour, cross-file
+    tracing). Three independent angles converged on the same root issue — the
+    original `FindProposalResultContent` re-derived "last call wins" by scanning
+    `response.Messages` for the tool name after the fact, instead of using the
+    `CallId` already known at the moment `propose_script_edit` was called — and
+    `SetEditDisposition` failed silently if that re-derivation ever missed.
+    Fixed: `ProposeScriptEdit` now captures its own `CallId` via
+    `FunctionInvokingChatClient.CurrentContext` at invocation time; the lookup is
+    a single-pass match on a known ID instead of a two-pass scan-and-guess; and a
+    missed reconciliation now logs `EditDispositionReconciliationMissed`
+    (Warning, event 1033) instead of failing silently.
+  - A genuine thread-safety gap was also found and fixed: `SendAsync` awaits the
+    provider with `ConfigureAwait(false)`, so `AddTurn` can resume on a
+    thread-pool thread while a host's UI thread calls `SetEditDisposition` for an
+    *earlier*, still-pending turn — an unguarded `List<T>` race (pre-existing for
+    `_turns`, widened by this milestone's new `_turnProposalResults` list). Fixed
+    with a single `Lock` guarding the three turn-parallel lists.
+  - A minor closure-capture nit (the OpenAI `ConfigureOptions` delegate closed
+    over the whole `ScriptChatClientOptions`, including the API key, instead of
+    just the one `int` it needed) was also fixed, per D3's spirit.
+  - **New test coverage added post-review**: `OpenAIWireFormatTests` (a fake
+    `HttpMessageHandler`-backed transport proves `MaxOutputTokens` actually
+    reaches the real OpenAI SDK's request body, that an explicit per-call
+    ceiling — e.g. the settings panel's cheap "test connection" probe — isn't
+    overridden by the configured default, and that a real tool-call response
+    parses correctly); `ScriptChatSessionOpenAIIntegrationTests` (the big one —
+    a full `ScriptChatSession` wired to a fake-transport-backed real OpenAI
+    client, proving the entire `CallId` capture → wire round-trip → disposition
+    rewrite chain works end to end, not just against the hand-rolled
+    `FakeChatClient` used elsewhere); OpenAI-parameterised guard-clause tests;
+    a panel-level "`Configure` with OpenAI succeeds" test.
+  - **Still not exercised against the real OpenAI API** — everything above,
+    including the wire-format tests, runs against a fake key and a fake HTTP
+    transport (BYOK, D3 — this library never touches a real key outside a
+    provider SDK call, and that includes tests). A live smoke test with a real
+    key is still outstanding before calling this done in practice — see the
+    walkthrough that was talked through for this earlier in the session:
+    launch the test host, use "Test connection" as a narrow credential check,
+    then a full UC1/UC2 pass, checking the CSV log (the host runs at `Trace`)
+    to confirm the reconciled tool-result text actually reaches a real model.
 
 ## Non-goals (v1)
 
@@ -242,30 +280,52 @@ in `ScriptChatClientFactory` so it constructs a real `IChatClient` instead of th
    ceiling the way Anthropic's does, the ceiling is applied via
    `.AsBuilder().ConfigureOptions(o => o.MaxOutputTokens ??= options.MaxOutputTokens)`
    instead. `ScriptChatProvider.Grok` still throws `NotSupportedException`.
-2. **Disposition reconciliation in `ScriptChatSession`** — **done.** A new
-   `_turnProposalResults` list (parallel to `_turns`) keeps a reference to each
+2. **Disposition reconciliation in `ScriptChatSession`** — **done, revised after review.**
+   A `_turnProposalResults` list (parallel to `_turns`) keeps a reference to each
    turn's `propose_script_edit` `FunctionResultContent`. `SetEditDisposition`
    mutates that object's `Result` in place — it's the same instance already
-   sitting in `_history`, so no extra history-editing step is needed — to "The
-   user accepted/rejected this edit..." once the user decides, replacing the
-   frozen "not applied yet" text.
-3. **Verification** — unit-level done: 58 Core + 76 WinForms tests pass,
-   solution builds clean. **Not done**: a live smoke test against the real
-   OpenAI API (needs a real key — BYOK, so that's down to whoever runs the test
-   host next) and a manual UC2 walkthrough in the test host UI.
+   sitting in `_history` — to "The user accepted/rejected this edit..." once the
+   user decides, replacing the frozen "not applied yet" text. The initial version
+   found that content by re-scanning `response.Messages` for the tool name
+   after the fact; an 8-angle code review converged on this being fragile
+   (re-deriving "last call wins" instead of using the `CallId` already known at
+   the point of the call, with a silent failure mode if it ever mismatched), so
+   `ProposeScriptEdit` now captures its own `CallId` via
+   `FunctionInvokingChatClient.CurrentContext` at invocation time and the lookup
+   is a single keyed match. A missed reconciliation now logs a Warning
+   (`EditDispositionReconciliationMissed`) instead of failing silently. The
+   review also found a genuine `List<T>` thread-safety gap (`SendAsync`'s
+   `ConfigureAwait(false)` continuation can run `AddTurn` on a thread-pool
+   thread concurrently with the host's UI thread calling `SetEditDisposition`
+   for an earlier turn) — fixed with a `Lock` around the three turn-parallel lists.
+3. **Verification** — **done**, including a real-pipeline check the initial pass
+   didn't have: `ScriptChatSessionOpenAIIntegrationTests` builds a full
+   `ScriptChatSession` around a real OpenAI SDK client pointed at a fake HTTP
+   transport, proving the `CallId` capture → wire round-trip → disposition
+   rewrite chain works end to end, not just against the hand-rolled
+   `FakeChatClient` used elsewhere. 65 Core + 77 WinForms tests pass, solution
+   builds clean with zero warnings. **Still not done**: a live smoke test
+   against the real OpenAI API (needs a real key — BYOK, so that's down to
+   whoever runs the test host next) and a manual UC2 walkthrough in the test
+   host UI — see the walkthrough talked through earlier in the session.
 
 #### Acceptance criteria (milestone 2)
 
 - A configured OpenAI API key and model can complete a real UC1-style turn
   (text-only answer, and a turn that proposes an edit shown as a diff) —
-  matching Claude's behaviour, not a stub. **Unverified against the real API**
-  — only covered by unit tests against a fake key so far.
+  matching Claude's behaviour, not a stub. **Covered by wire-format tests**
+  against a fake transport (`OpenAIWireFormatTests`), proving the request/response
+  shape is right; **still unverified against the real API** — that's a real
+  network call this session couldn't make (no real key — BYOK).
 - After a multi-turn conversation where one proposed edit is **rejected** and a
   later one is **accepted**, the model's replies stay consistent with the
   script's actual state — it doesn't act as though a rejected edit took effect.
-  **Covered by unit tests** (`SetEditDisposition_Accepted/Rejected_RewritesTheFrozenToolResultForTheNextTurn`)
-  asserting the rewritten tool-result text reaches the next provider call;
-  not yet walked through manually against a real model's actual replies.
+  **Covered by unit tests** against `FakeChatClient`
+  (`SetEditDisposition_Accepted/Rejected_RewritesTheFrozenToolResultForTheNextTurn`)
+  **and by a real-OpenAI-wire-format integration test**
+  (`ScriptChatSessionOpenAIIntegrationTests`), both asserting the rewritten
+  tool-result text reaches the next provider call. Not yet walked through
+  manually against a real model's actual replies.
 - All milestone 1 acceptance criteria still pass (regression bar) — **met**,
   full suite green.
 

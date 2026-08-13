@@ -47,6 +47,15 @@ public sealed class ScriptChatSession
     /// </summary>
     private readonly List<FunctionResultContent?> _turnProposalResults = [];
 
+    /// <summary>
+    /// Guards <see cref="_turns"/>, <see cref="_turnBaselines"/>, and <see cref="_turnProposalResults"/>.
+    /// <see cref="SendAsync"/> awaits the provider with <c>ConfigureAwait(false)</c>, so
+    /// <see cref="AddTurn"/> can resume on a thread-pool thread while <see cref="SetEditDisposition"/>
+    /// runs concurrently on the host's UI thread for an earlier, still-pending turn; without this,
+    /// that's a genuine <see cref="List{T}"/> torn-read/corruption risk, not just a logical race.
+    /// </summary>
+    private readonly Lock _turnsLock = new();
+
     private readonly List<string> _symbolsLookedUp = [];
     private readonly IList<AITool> _tools;
 
@@ -57,6 +66,15 @@ public sealed class ScriptChatSession
     /// Set by the <c>propose_script_edit</c> tool during a turn, read once the turn completes.
     /// </summary>
     private ScriptEditProposal? _capturedProposal;
+
+    /// <summary>
+    /// The <c>CallId</c> of the call that produced
+    /// <see cref="_capturedProposal"/>, captured at the moment of the call via
+    /// <see cref="FunctionInvokingChatClient.CurrentContext"/> rather than re-derived afterwards
+    /// by scanning <c>response.Messages</c> for the tool name — one source of truth for "which
+    /// call won" instead of two that could drift apart.
+    /// </summary>
+    private string? _capturedProposalCallId;
 
     /// <summary>
     /// Initialises a session over an existing chat client.
@@ -153,6 +171,7 @@ public sealed class ScriptChatSession
         try
         {
             _capturedProposal = null;
+            _capturedProposalCallId = null;
             _symbolsLookedUp.Clear();
 
             if (_history.Count == 0)
@@ -179,7 +198,9 @@ public sealed class ScriptChatSession
 
             var text = string.IsNullOrWhiteSpace(response.Text) ? null : response.Text.Trim();
             var proposal = _capturedProposal;
-            var proposalResultContent = proposal is null ? null : FindProposalResultContent(response.Messages);
+            var proposalResultContent = proposal is null
+                ? null
+                : FindProposalResultContent(response.Messages, _capturedProposalCallId);
 
             AddTurn(
                 new ChatTurn(
@@ -251,20 +272,32 @@ public sealed class ScriptChatSession
                 nameof(disposition));
         }
 
-        var turn = _turns[turnIndex];
-        if (!turn.HasProposedEdit)
+        lock (_turnsLock)
         {
-            throw new InvalidOperationException($"Turn {turnIndex} proposed no edit.");
-        }
+            var turn = _turns[turnIndex];
+            if (!turn.HasProposedEdit)
+            {
+                throw new InvalidOperationException($"Turn {turnIndex} proposed no edit.");
+            }
 
-        _turns[turnIndex] = turn with { Disposition = disposition };
+            _turns[turnIndex] = turn with { Disposition = disposition };
 
-        var resultContent = _turnProposalResults[turnIndex];
-        if (resultContent is not null)
-        {
-            resultContent.Result = disposition == EditDisposition.Accepted
-                ? "The user accepted this edit. The script now reflects it."
-                : "The user rejected this edit. The script is unchanged from before this proposal.";
+            var resultContent = _turnProposalResults[turnIndex];
+            if (resultContent is not null)
+            {
+                resultContent.Result = disposition == EditDisposition.Accepted
+                    ? "The user accepted this edit. The script now reflects it."
+                    : "The user rejected this edit. The script is unchanged from before this proposal.";
+            }
+            else
+            {
+                // Should be unreachable — HasProposedEdit is true, so FindProposalResultContent
+                // should have matched something when the turn was added. Logged rather than
+                // silently accepted: without this, the turn would show as Accepted/Rejected in
+                // the UI while the model's own history still says the edit is undecided, and
+                // nothing would explain why (this is the exact UC2 bug this method exists to fix).
+                _logger.EditDispositionReconciliationMissed(turnIndex);
+            }
         }
 
         _logger.EditDispositionRecorded(turnIndex, disposition);
@@ -279,37 +312,42 @@ public sealed class ScriptChatSession
         _logger.SessionReset(_turns.Count, _history.Count);
 
         _history.Clear();
-        _turns.Clear();
-        _turnBaselines.Clear();
-        _turnProposalResults.Clear();
+
+        lock (_turnsLock)
+        {
+            _turns.Clear();
+            _turnBaselines.Clear();
+            _turnProposalResults.Clear();
+        }
+
         _symbolsLookedUp.Clear();
         _capturedProposal = null;
+        _capturedProposalCallId = null;
     }
 
     /// <summary>Appends a turn and the script it was sent against, keeping the two in step.</summary>
     private void AddTurn(ChatTurn turn, string baselineScript, FunctionResultContent? proposalResultContent = null)
     {
-        _turns.Add(turn);
-        _turnBaselines.Add(baselineScript);
-        _turnProposalResults.Add(proposalResultContent);
+        lock (_turnsLock)
+        {
+            _turns.Add(turn);
+            _turnBaselines.Add(baselineScript);
+            _turnProposalResults.Add(proposalResultContent);
+        }
     }
 
     /// <summary>
-    /// Finds the tool-result content for the turn's <c>propose_script_edit</c> call, so
-    /// <see cref="SetEditDisposition"/> can rewrite it later. If the model called the tool more
-    /// than once, the last call wins — matching <see cref="ProposeScriptEdit"/>'s own semantics.
+    /// Finds the tool-result content matching <paramref name="callId"/>, so
+    /// <see cref="SetEditDisposition"/> can rewrite it later.
     /// </summary>
-    private static FunctionResultContent? FindProposalResultContent(IEnumerable<ChatMessage> messages)
+    /// <param name="messages">The turn's response messages, including any tool call/result pairs.</param>
+    /// <param name="callId">
+    /// The <c>CallId</c> captured at the moment <c>propose_script_edit</c>
+    /// was called, or <see langword="null"/> if that capture failed for some reason — in which case
+    /// this returns <see langword="null"/> too rather than guessing.
+    /// </param>
+    private static FunctionResultContent? FindProposalResultContent(IEnumerable<ChatMessage> messages, string? callId)
     {
-        string? callId = null;
-        foreach (var content in messages.SelectMany(m => m.Contents))
-        {
-            if (content is FunctionCallContent { Name: "propose_script_edit" } call)
-            {
-                callId = call.CallId;
-            }
-        }
-
         if (callId is null)
         {
             return null;
@@ -429,8 +467,12 @@ public sealed class ScriptChatSession
         _logger.EditProposed(newScript.Length, summary.Length, _capturedProposal is not null);
         _logger.EditProposalContent(summary, newScript);
 
-        // Last call wins if the model proposes twice; the prompt asks for at most one.
+        // Last call wins if the model proposes twice; the prompt asks for at most one. Capturing
+        // CallId here — the one place that genuinely knows it — means FindProposalResultContent
+        // only ever has to look up a known ID, rather than independently re-deriving "which call
+        // was last" by re-scanning response.Messages after the fact.
         _capturedProposal = new ScriptEditProposal(newScript, summary);
+        _capturedProposalCallId = FunctionInvokingChatClient.CurrentContext?.CallContent.CallId;
 
         return "Proposal recorded and shown to the user as a diff. It is not applied until they accept it.";
     }

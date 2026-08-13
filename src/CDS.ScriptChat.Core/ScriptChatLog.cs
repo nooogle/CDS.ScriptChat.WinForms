@@ -177,6 +177,15 @@ internal static partial class ScriptChatLog
         EditDisposition disposition);
 
     [LoggerMessage(
+        EventId = 1033,
+        EventName = "EditDispositionReconciliationMissed",
+        Level = LogLevel.Warning,
+        Message = "Turn {TurnIndex} proposed an edit but no matching propose_script_edit tool-result "
+            + "was found to reconcile — the model's history still says the edit is undecided even "
+            + "though the user just accepted or rejected it.")]
+    public static partial void EditDispositionReconciliationMissed(this ILogger logger, int turnIndex);
+
+    [LoggerMessage(
         EventId = 1040,
         EventName = "SessionReset",
         Level = LogLevel.Information,

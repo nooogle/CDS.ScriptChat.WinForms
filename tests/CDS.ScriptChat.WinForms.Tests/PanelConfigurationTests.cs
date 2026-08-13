@@ -32,6 +32,20 @@ public sealed class PanelConfigurationTests
     }
 
     [TestMethod]
+    public void Configure_ValidOpenAIOptions_MakesThePanelReady()
+    {
+        using var panel = new ScriptChatPanel { ScriptTextProvider = () => "var x = 1;" };
+
+        panel.Configure(ClaudeOptions with
+        {
+            Provider = ScriptChatProvider.OpenAI,
+            ModelId = ScriptChatModels.DefaultForProvider(ScriptChatProvider.OpenAI),
+        });
+
+        panel.IsReady.Should().BeTrue();
+    }
+
+    [TestMethod]
     public void Configure_MissingApiKey_LeavesThePanelUnavailableRatherThanThrowing()
     {
         using var panel = new ScriptChatPanel { ScriptTextProvider = () => "var x = 1;" };
