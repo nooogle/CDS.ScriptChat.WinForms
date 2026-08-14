@@ -416,7 +416,19 @@ for real**:
       bump from the existing (pre-public) `V1.0.0` tag, since milestone 2 added
       real backward-compatible functionality (OpenAI provider, UC2 multi-turn
       edit reconciliation).
-- [ ] nuget.org trusted publishing policy — in progress (user).
-- [ ] Cut and push the `V1.1.0` tag once the policy is confirmed done.
+- [x] nuget.org trusted publishing policy created (user).
+- [x] **`V1.1.0` tagged, pushed, and released — first real publish succeeded
+      end to end on the first attempt.** Every `release.yml` step green: build,
+      both MTP test suites, pack, SBOM generation, build-provenance + SBOM
+      attestations, GitHub Release (confirmed live with all 6 assets —
+      `CDS.ScriptChat.Core`/`.WinForms` `.nupkg` + `.snupkg` + both `bom-*.json`),
+      NuGet OIDC authentication, and the push to nuget.org itself. No manual
+      API key, no partial-failure bootstrap run — the corrected understanding
+      of trusted publishing (see the phase 6 entry above) held up in practice.
+      This is the actual finish line for the whole packaging effort — Core and
+      WinForms are real, installable NuGet packages now.
 - [ ] `CONTRIBUTING.md`/`CODE_OF_CONDUCT.md`/`SECURITY.md` still outstanding
-      from phase 4 — not blocking the first release, worth doing soon after.
+      from phase 4 — not blocking, worth doing soon.
+- [ ] Consider the `CDS.ScriptChat.` prefix reservation now that a package is
+      actually published under it (see the "ID prefix reservation" section
+      above — needs at least one live package first, which is now true).
