@@ -11,10 +11,17 @@ internal static class Program
     public const string ApplicationName = "CDS.ScriptChat.TestHost";
 
     /// <summary>Runs the test host.</summary>
+    /// <param name="args">
+    /// Command-line arguments. <c>--trace</c> is the only one recognised: it opts into
+    /// content-bearing logging (see <see cref="LoggerFactory"/> setup below). Without it, this
+    /// run records no prompt, reply, or script content anywhere (D3, D17).
+    /// </param>
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+
+        var traceRequested = args.Contains("--trace", StringComparer.OrdinalIgnoreCase);
 
         // Constructed here, not inside the builder: neither the logger factory nor the DI
         // container disposes a provider it did not create, so this scope is what closes the file.
@@ -22,14 +29,15 @@ internal static class Program
 
         using var loggerFactory = LoggerFactory.Create(builder =>
         {
-            // Trace, because this host exists to diagnose the panel: at Trace the log carries
-            // the prompts, the replies, and the proposed scripts as well as the structure. A
-            // shipping host would stop at Information and record no user content at all (D16).
-            builder.SetMinimumLevel(LogLevel.Trace);
+            // Information by default: at that level the log carries only structure — no prompt,
+            // reply, or script content (D16). Trace is diagnostic-only and carries all of that
+            // content, so per D17 it must never be the default here or in any consuming host —
+            // only an explicit, deliberate --trace on the command line turns it on.
+            builder.SetMinimumLevel(traceRequested ? LogLevel.Trace : LogLevel.Information);
             builder.AddProvider(csvProvider);
             builder.AddDebug();
         });
 
-        Application.Run(new MainForm(loggerFactory, csvProvider.FilePath));
+        Application.Run(new MainForm(loggerFactory, csvProvider.FilePath, traceRequested));
     }
 }

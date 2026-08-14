@@ -30,6 +30,7 @@ public partial class MainForm : Form
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private readonly string? _logFilePath;
+    private readonly bool _traceEnabled;
 
     /// <summary>
     /// Initialises a new instance of the <see cref="MainForm"/> class with no logging.
@@ -39,7 +40,7 @@ public partial class MainForm : Form
     /// has a parameterless constructor (D14). The application itself uses the overload.
     /// </remarks>
     public MainForm()
-        : this(NullLoggerFactory.Instance, logFilePath: null)
+        : this(NullLoggerFactory.Instance, logFilePath: null, traceEnabled: false)
     {
     }
 
@@ -54,14 +55,19 @@ public partial class MainForm : Form
     /// The CSV file this run is writing, shown at the bottom of the window so it can be opened
     /// while the app is still running. <see langword="null"/> when nothing is being written.
     /// </param>
+    /// <param name="traceEnabled">
+    /// Whether <paramref name="loggerFactory"/> was configured for <c>Trace</c> — shown in the
+    /// window so a run that is recording prompt/script content is never silently so (D3, D17).
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="loggerFactory"/> is <see langword="null"/>.</exception>
-    public MainForm(ILoggerFactory loggerFactory, string? logFilePath)
+    public MainForm(ILoggerFactory loggerFactory, string? logFilePath, bool traceEnabled = false)
     {
         ArgumentNullException.ThrowIfNull(loggerFactory);
 
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<MainForm>();
         _logFilePath = logFilePath;
+        _traceEnabled = traceEnabled;
 
         InitializeComponent();
 
@@ -90,7 +96,9 @@ public partial class MainForm : Form
 
         _logFileLinkLabel.Text = _logFilePath is null
             ? "Logging is off for this run."
-            : $"Log: {_logFilePath}";
+            : _traceEnabled
+                ? $"Log (--trace: contains your prompts, replies, and scripts): {_logFilePath}"
+                : $"Log: {_logFilePath}";
         _logFileLinkLabel.LinkArea = _logFilePath is null
             ? default
             : new LinkArea(0, _logFileLinkLabel.Text.Length);

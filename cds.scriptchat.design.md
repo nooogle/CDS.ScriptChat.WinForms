@@ -20,13 +20,12 @@ and Fable.
 - **Milestone 1** (UC1, UC3, UC4, UC6) — **complete**. All build-order steps 1–6
   done, acceptance criteria met, tests passing. Packages published as `1.0.0`
   (see `todo.packaging.md`).
-- **Outstanding from Milestone 1** (not scope gaps, but unfinished follow-through):
-  - The pre-release logging checklist under "What must be removed or turned off
-    before release" is still unaddressed — the test host still runs at
-    `LogLevel.Trace` (`samples/CDS.ScriptChat.TestHost/Program.cs`). Must be
-    resolved before Fable or the Playground consumes the library, per D3.
+- **Outstanding from Milestone 1** — both items now closed:
+  - ~~The pre-release logging checklist... test host still runs at `Trace`~~ —
+    closed 2026-08-14. See D17 and "What must be removed or turned off before
+    release" under Logging.
   - ~~`ScriptChatClientFactory` throws `NotSupportedException` for `OpenAI`~~ —
-    closed by milestone 2. `Grok` still throws; remains deferred.
+    closed by milestone 2. `Grok` still throws; remains deferred, not a gap.
 - **Milestone 2** (UC2, OpenAI wiring) — **complete**, including live verification
   (65 Core + 77 WinForms, solution builds clean, zero warnings). `ScriptChatClientFactory`
   wires `Microsoft.Extensions.AI.OpenAI` for real; `ScriptChatSession` rewrites
@@ -169,6 +168,7 @@ app can use whichever fits its own project layout better.
 | D14 | Every UI component (panel, settings sub-panel, any dialog) is built as a standard WinForms Designer class — `.cs` / `.Designer.cs` / `.resx` triplet, `InitializeComponent()`, no hand-rolled layout-in-code, no third-party designer-incompatible UI framework. Must open and edit cleanly in the VS 2026 WinForms Designer. Adding transcript items to a container at runtime is data binding, not layout, and is not covered by this rule. |
 | D15 | **Nothing use-case-specific ships in the library.** No Roslyn, no CDS.CSharpScripting2, no Scintilla, no OpenCvSharp — no dependency that presumes a particular host app, scripting engine, or editor control. Symbol lookup is an interface the host implements (`ISymbolLookupProvider`); the script buffer is reached through host-supplied delegates. The library ships a no-op symbol provider so the tool-calling path works out of the box, and the test host app carries the worked example of a real one. Supersedes the `CDS.ScriptChat.Roslyn` project in the original architecture and the Scintilla dependency in D7. |
 | D16 | **Logging is standard `Microsoft.Extensions.Logging` throughout, and content is confined to `Trace`.** Every component takes an `ILoggerFactory` (not a bare `ILogger`), so the whole `Microsoft.Extensions.AI` pipeline — function invocation and the provider round-trips — is instrumented from one property. Levels are split so the split is enforceable rather than a matter of care at each call site: `Information` and above carry **structure only** (names, lengths, counts, timings, event IDs, exceptions), while prompts, responses, proposed scripts, edit summaries, symbol signatures, and the orientation blurb appear at **`Trace` and nowhere else**. API keys appear at no level at all (D3) — only a key's length, which is what distinguishes a truncated paste from a wrong key. See "Logging" below. |
+| D17 | **`Trace` (or any other content-bearing logging) must never be the default minimum level anywhere** — not in a consuming host, and not in this repo's own test host. D16 constrains *where* content can be logged (`Trace` only); D17 constrains *whether it's ever on by default*, closing the gap where the test host ran at `Trace` unconditionally from milestone 1 until this was raised and fixed. The test host now defaults to `Information` and only logs content behind an explicit `--trace` command-line flag, with the running window's log-file label saying so plainly when it's active. Nothing in this library or its samples may log, cache, telemetry-report, or otherwise transmit prompt text, script text, response text, or API key material anywhere except the direct provider SDK call and (for content) an explicitly, deliberately opted-into `Trace` sink. |
 
 ## Logging
 
@@ -193,28 +193,37 @@ file per run under `%LOCALAPPDATA%\CDS.ScriptChat.TestHost\logs\`, with a link t
 the bottom of the window. It lives in the sample, not the library, per D15 — a consuming
 app brings its own logging.
 
-### What must be removed or turned off before release
+### What must be removed or turned off before release — logging review (2026-08-14): closed
 
-The test host deliberately runs at `Trace`, which means **its log file contains the user's
-script, their messages, the model's replies, and any proposed edit**. That is right for a
-diagnostic host and wrong for a shipping one; D3 rules out this kind of activity and
-content recording in a product.
+The test host used to run at `Trace` unconditionally, meaning **its log file contained the
+user's script, their messages, the model's replies, and any proposed edit** on every run.
+That was right for early diagnostic work and wrong to leave as the default; D3 rules out
+this kind of content recording in a product, and D17 now makes "never on by default"
+explicit rather than implied.
 
-Because of the level discipline in D16, switching it off is a floor change rather than a
-code edit — but it is not optional, and it is not done yet:
+Because of the level discipline in D16, switching it off was a floor change rather than a
+code edit — done as of this review:
 
-- [ ] **Test host**: drop `SetMinimumLevel(LogLevel.Trace)` in `Program.cs` to
-      `LogLevel.Information`, or keep Trace only behind an explicit opt-in (a command-line
-      switch or a debug build), so a casual run does not write content to disk.
-- [ ] **Consuming hosts** (Fable, the OpenCvSharp Playground): never configure `Trace` for
-      the `CDS.ScriptChat.*` categories. `Information` gives the full call/result/timing
-      picture with no user content in it.
-- [ ] **Re-check before the first release** that no content-bearing message has drifted up
-      out of `Trace`. `ScriptChatSessionLoggingTests` covers this for the session
-      (`SendAsync_AtInformation_RecordsNoScriptOrPromptOrResponseContent`); extend it if new
-      content-bearing messages are added.
+- [x] **Test host**: `Program.cs` now defaults to `LogLevel.Information`; `Trace` is reachable
+      only via an explicit `--trace` command-line flag, and the window's log-file label says
+      so plainly when it's active, so a run recording content is never silently so.
+- [x] **Re-checked**: every `Information`-and-above message in both `ScriptChatLog.cs` and
+      `ScriptChatWinFormsLog.cs` was read end to end — all carry only lengths, counts,
+      booleans, enums, or IDs; every content-bearing template (prompt, response, proposed
+      script, symbol signature, orientation blurb) is at `Trace`; every API-key-adjacent
+      field logs `.Length` only, never the key. `ScriptChatSessionLoggingTests` covers this
+      for the session in an automated test
+      (`SendAsync_AtInformation_RecordsNoScriptOrPromptOrResponseContent`) — extend it if new
+      content-bearing messages are added, and re-run this same manual check before any future
+      release, since new log call sites won't add themselves to that test automatically.
+- [ ] **Consuming hosts** (Fable, the OpenCvSharp Playground): standing guidance, not a
+      one-time task — never configure `Trace` for the `CDS.ScriptChat.*` categories in a real
+      deployment. `Information` gives the full call/result/timing picture with no user
+      content in it. D17 exists so this is the host's explicit choice to override, never an
+      accidental default it inherited.
 
-Owner: Jon. Due: before `CDS.ScriptChat` is consumed by any app other than the test host.
+Owner: Jon. The test-host and re-check items are done; the consuming-host guidance is
+ongoing and applies whenever Fable or the Playground actually wire this library in.
 
 ## Use Cases
 
