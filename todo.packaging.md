@@ -359,9 +359,37 @@ deserve its own session.
 the audit is clean, all five workflow files exist
 (`ci.yml`/`release.yml`/`codeql.yml`/`scorecard.yml`/`dependabot.yml`), and the
 `nuget` GitHub environment + `NUGET_USER` secret + Dependency graph are set up.
-**Still open before the repo can go public and cut a real release**: verify
-`ci.yml` actually goes green on a real push (workflow files are untested until
-they run), branch protection on `master`, the nuget.org trusted-publishing
-policy (blocked on the first publish — see phase 6), and the actual flip to
-public. `CONTRIBUTING.md`/`CODE_OF_CONDUCT.md`/`SECURITY.md` are also still
-outstanding from phase 4.
+
+**First real run, verified against actual GitHub Actions output, not assumed**:
+- [x] `ci.yml` on push to `master`: **green** — Build & Test job passed for
+      real (66 Core + 77 WinForms tests, matching the local run exactly).
+- [x] Dependabot opened its first PR within minutes (`Microsoft.NET.Test.Sdk`
+      18.8.1 → 18.9.0) — its `ci.yml` Build & Test job also passed. Confirms
+      the pipeline works end-to-end, not just on the first commit.
+- [x] **Fixed a real bug**: `scorecard.yml`'s job `permissions:` block omitted
+      `contents: read`. Public repos never surface this (anonymous checkout
+      works regardless of token scope), which is presumably why it went
+      unnoticed across the whole fleet rollout — every one of those repos was
+      already public by the time Scorecard ran. This repo is still private, so
+      `actions/checkout` failed outright ("Repository not found") until the
+      permission was added explicitly. **Worth feeding back into
+      `CI-CD-STANDARDS.md`** if another repo goes through this same
+      private-repo-first sequence — flagged for the user, not changed
+      unilaterally since it's a shared cross-repo file.
+- [ ] `codeql.yml` and the `dependency-review` job in `ci.yml` both failed with
+      the same root cause, and it isn't a workflow bug: *"Code scanning is not
+      enabled for this repository"* / *"Please ensure that Dependency graph is
+      enabled along with GitHub Advanced Security"*. Both features are free for
+      **public** repos but gated behind (paid, per-seat) GitHub Advanced
+      Security on private ones. Dependency graph is already on; expect both to
+      start working once the repo goes public — but confirm after the flip
+      (Settings → Security → Code security and analysis → GitHub Advanced
+      Security may still need an explicit enable even on a public repo) rather
+      than assuming.
+
+**Still open before the repo can go public and cut a real release**: confirm
+CodeQL/Dependency Review actually go green after the public flip (can't be
+verified before it), branch protection on `master`, the nuget.org
+trusted-publishing policy (blocked on the first publish — see phase 6), and the
+actual flip to public itself. `CONTRIBUTING.md`/`CODE_OF_CONDUCT.md`/`SECURITY.md`
+are also still outstanding from phase 4.

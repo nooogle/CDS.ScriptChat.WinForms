@@ -14,8 +14,11 @@ jobs:
     name: Scorecard analysis
     runs-on: ubuntu-latest
     permissions:
-      security-events: write   # to upload SARIF results
-      id-token: write          # to publish results and get a badge
+      contents: read            # to check out the repo — public repos allow anonymous
+                                 # checkout regardless of token scope, but this repo is
+                                 # currently private, where checkout needs it explicitly
+      security-events: write    # to upload SARIF results
+      id-token: write           # to publish results and get a badge
 
     steps:
       - uses: actions/checkout@v7
