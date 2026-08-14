@@ -23,3 +23,11 @@ Original HTML form as supplied by Flaticon:
 ```
 
 If the icon is ever replaced, remove the attribution along with it.
+
+## screenshot-test-host.png
+
+Screenshot of `samples/CDS.ScriptChat.TestHost` at its default window size,
+used in the root `README.md`. Captured with no live conversation in progress
+(the transcript and `lookup_symbol` panes are empty) so it doesn't show any
+real prompt or response content. Re-capture if the test host's layout changes
+enough to make this stale.

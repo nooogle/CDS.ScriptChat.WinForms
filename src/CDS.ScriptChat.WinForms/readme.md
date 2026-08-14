@@ -20,6 +20,8 @@ conversation engine.
 
 MIT licensed.
 
+Full docs, a screenshot, and the design record: [GitHub repo](https://github.com/nooogle/CDS.ScriptChat.WinForms).
+
 ## Credits
 
 Package icon: [Seo and web icons created by Yogi Aprelliyanto — Flaticon](https://www.flaticon.com/free-icons/seo-and-web)
