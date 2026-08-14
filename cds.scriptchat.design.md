@@ -27,7 +27,7 @@ and Fable.
     resolved before Fable or the Playground consumes the library, per D3.
   - ~~`ScriptChatClientFactory` throws `NotSupportedException` for `OpenAI`~~ —
     closed by milestone 2. `Grok` still throws; remains deferred.
-- **Milestone 2** (UC2, OpenAI wiring) — **build complete, tests passing, reviewed**
+- **Milestone 2** (UC2, OpenAI wiring) — **complete**, including live verification
   (65 Core + 77 WinForms, solution builds clean, zero warnings). `ScriptChatClientFactory`
   wires `Microsoft.Extensions.AI.OpenAI` for real; `ScriptChatSession` rewrites
   the frozen `propose_script_edit` tool-result on accept/reject so a later
@@ -64,15 +64,10 @@ and Fable.
     rewrite chain works end to end, not just against the hand-rolled
     `FakeChatClient` used elsewhere); OpenAI-parameterised guard-clause tests;
     a panel-level "`Configure` with OpenAI succeeds" test.
-  - **Still not exercised against the real OpenAI API** — everything above,
-    including the wire-format tests, runs against a fake key and a fake HTTP
-    transport (BYOK, D3 — this library never touches a real key outside a
-    provider SDK call, and that includes tests). A live smoke test with a real
-    key is still outstanding before calling this done in practice — see the
-    walkthrough that was talked through for this earlier in the session:
-    launch the test host, use "Test connection" as a narrow credential check,
-    then a full UC1/UC2 pass, checking the CSV log (the host runs at `Trace`)
-    to confirm the reconciled tool-result text actually reaches a real model.
+  - **Verified live against the real OpenAI API** (2026-08-14, Jon, own key —
+    BYOK, D3). Everything above was covered by tests against a fake key and a
+    fake HTTP transport only up to this point; the automated suite still never
+    touches a real key, by design.
 
 ## Non-goals (v1)
 
@@ -304,28 +299,23 @@ in `ScriptChatClientFactory` so it constructs a real `IChatClient` instead of th
    transport, proving the `CallId` capture → wire round-trip → disposition
    rewrite chain works end to end, not just against the hand-rolled
    `FakeChatClient` used elsewhere. 65 Core + 77 WinForms tests pass, solution
-   builds clean with zero warnings. **Still not done**: a live smoke test
-   against the real OpenAI API (needs a real key — BYOK, so that's down to
-   whoever runs the test host next) and a manual UC2 walkthrough in the test
-   host UI — see the walkthrough talked through earlier in the session.
+   builds clean with zero warnings. **Live smoke test against the real OpenAI
+   API: done** (2026-08-14, Jon, own key).
 
 #### Acceptance criteria (milestone 2)
 
 - A configured OpenAI API key and model can complete a real UC1-style turn
   (text-only answer, and a turn that proposes an edit shown as a diff) —
-  matching Claude's behaviour, not a stub. **Covered by wire-format tests**
-  against a fake transport (`OpenAIWireFormatTests`), proving the request/response
-  shape is right; **still unverified against the real API** — that's a real
-  network call this session couldn't make (no real key — BYOK).
+  matching Claude's behaviour, not a stub. **Met** — covered by wire-format
+  tests against a fake transport (`OpenAIWireFormatTests`) and confirmed
+  against the real API by Jon on 2026-08-14.
 - After a multi-turn conversation where one proposed edit is **rejected** and a
   later one is **accepted**, the model's replies stay consistent with the
   script's actual state — it doesn't act as though a rejected edit took effect.
-  **Covered by unit tests** against `FakeChatClient`
-  (`SetEditDisposition_Accepted/Rejected_RewritesTheFrozenToolResultForTheNextTurn`)
-  **and by a real-OpenAI-wire-format integration test**
-  (`ScriptChatSessionOpenAIIntegrationTests`), both asserting the rewritten
-  tool-result text reaches the next provider call. Not yet walked through
-  manually against a real model's actual replies.
+  **Met** — covered by unit tests against `FakeChatClient`
+  (`SetEditDisposition_Accepted/Rejected_RewritesTheFrozenToolResultForTheNextTurn`),
+  by a real-OpenAI-wire-format integration test (`ScriptChatSessionOpenAIIntegrationTests`),
+  and by Jon's live walkthrough against the real API on 2026-08-14.
 - All milestone 1 acceptance criteria still pass (regression bar) — **met**,
   full suite green.
 
