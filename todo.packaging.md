@@ -248,14 +248,20 @@ release yet. Revisit once they are.") This is that revisit.
       build-provenance/SBOM attestations, per the standards doc's supply-chain
       additions — not in the original phase 6 draft, added because they're free
       and the fleet-wide convention now includes them.
-- [ ] **Still open, nuget.org side (not something CI or repo settings can do)**:
-      no trusted publishing *policy* exists yet on nuget.org for either package,
-      because neither package has ever been published. First publish of a
-      brand-new package ID can't use a policy scoped to an existing package —
-      either push the first version manually with a classic API key and then
-      scope a policy to it, or create the policy scoped to a package *pattern*
-      (e.g. `CDS.ScriptChat.*`) if nuget.org's UI supports that pre-publish.
-      Check which before tagging the first real release.
+- [ ] **Corrected (2026-08-14), checked against the real docs
+      (`learn.microsoft.com/nuget/nuget-org/trusted-publishing`) rather than
+      assumed**: the "chicken-and-egg" problem this item used to describe
+      isn't real. A Trusted Publishing policy is scoped to
+      **{repository owner, repository, workflow file, environment}**, not to a
+      package ID — nuget.org's own docs: "The policy will apply to all
+      packages owned by the selected owner." **No manual first-publish with a
+      classic API key is needed.** Register the policy — Repository Owner
+      `nooogle`, Repository `CDS.ScriptChat.WinForms`, Workflow File
+      `release.yml`, Environment `nuget` — via nuget.org → username →
+      **Trusted Publishing**, and the very first tag push can publish through
+      OIDC directly. One nuance: policies against a still-private repo start
+      in a 7-day "pending" state (restartable) until a successful publish
+      confirms the repo/owner IDs — moot once the repo is public.
 - [ ] Rehearse on a prerelease tag (e.g. `V1.1.0-preview.1`) before cutting a
       real one. Note: `V1.0.0` already exists as a tag (local and pushed) but
       is 8 commits behind current `master` (predates milestone 2 and the D17
