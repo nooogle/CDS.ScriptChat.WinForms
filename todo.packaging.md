@@ -400,9 +400,23 @@ the audit is clean, all five workflow files exist
       Security may still need an explicit enable even on a public repo) rather
       than assuming.
 
-**Still open before the repo can go public and cut a real release**: confirm
-CodeQL/Dependency Review actually go green after the public flip (can't be
-verified before it), branch protection on `master`, the nuget.org
-trusted-publishing policy (blocked on the first publish — see phase 6), and the
-actual flip to public itself. `CONTRIBUTING.md`/`CODE_OF_CONDUCT.md`/`SECURITY.md`
-are also still outstanding from phase 4.
+**2026-08-14, later the same day — repo is public, all checks verified green
+for real**:
+- [x] Repo flipped to public by the user (confirmed via `gh repo view`).
+- [x] Branch protection added on `master` (required check: `Build & Test`,
+      force-push and deletion blocked) — API call that was denied by the auto
+      mode classifier while private now succeeded once public.
+- [x] Re-ran CodeQL and Scorecard against the same commit that failed while
+      private (`49058c9`, the merged Dependabot PR): **both now succeed**.
+      Confirms the diagnosis was right — pure GHAS/private-repo gating, no
+      workflow bug. Dependency Review wasn't re-tested directly (no open PR at
+      the time) but shares the identical GHAS gate CodeQL just cleared, so it's
+      expected to clear on the next Dependabot PR.
+- [x] First real version picked for the public launch: **`V1.1.0`** — minor
+      bump from the existing (pre-public) `V1.0.0` tag, since milestone 2 added
+      real backward-compatible functionality (OpenAI provider, UC2 multi-turn
+      edit reconciliation).
+- [ ] nuget.org trusted publishing policy — in progress (user).
+- [ ] Cut and push the `V1.1.0` tag once the policy is confirmed done.
+- [ ] `CONTRIBUTING.md`/`CODE_OF_CONDUCT.md`/`SECURITY.md` still outstanding
+      from phase 4 — not blocking the first release, worth doing soon after.
