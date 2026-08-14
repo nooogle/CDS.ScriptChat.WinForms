@@ -366,16 +366,23 @@ the audit is clean, all five workflow files exist
 - [x] Dependabot opened its first PR within minutes (`Microsoft.NET.Test.Sdk`
       18.8.1 → 18.9.0) — its `ci.yml` Build & Test job also passed. Confirms
       the pipeline works end-to-end, not just on the first commit.
-- [x] **Fixed a real bug**: `scorecard.yml`'s job `permissions:` block omitted
-      `contents: read`. Public repos never surface this (anonymous checkout
+- [x] **Fixed one real bug, uncovered a second, unfixable-until-public one** in
+      `scorecard.yml`. (1) The job's `permissions:` block omitted
+      `contents: read` — public repos never surface this (anonymous checkout
       works regardless of token scope), which is presumably why it went
-      unnoticed across the whole fleet rollout — every one of those repos was
-      already public by the time Scorecard ran. This repo is still private, so
-      `actions/checkout` failed outright ("Repository not found") until the
-      permission was added explicitly. **Worth feeding back into
-      `CI-CD-STANDARDS.md`** if another repo goes through this same
-      private-repo-first sequence — flagged for the user, not changed
-      unilaterally since it's a shared cross-repo file.
+      unnoticed across the whole fleet rollout, since every repo there was
+      already public by the time Scorecard ran. Fixed, and confirmed by
+      re-running: `actions/checkout` now succeeds. (2) With checkout fixed, the
+      action itself still fails — `scorecard had an error: ... githubv4.Query:
+      Resource not accessible by integration`, and its own log confirms
+      `Private repository: true`. Scorecard's checks (branch protection, etc.)
+      need more GitHub API scope than the default `GITHUB_TOKEN` gets on a
+      private repo; this is a genuine tool limitation, not something a workflow
+      tweak fixes. Expect it to start working once the repo goes public — a
+      third thing to confirm after the flip, not assume. **Both findings worth
+      feeding back into `CI-CD-STANDARDS.md`** for any future repo that goes
+      through this same private-repo-first sequence — flagged for the user, not
+      changed unilaterally since it's a shared cross-repo file.
 - [ ] `codeql.yml` and the `dependency-review` job in `ci.yml` both failed with
       the same root cause, and it isn't a workflow bug: *"Code scanning is not
       enabled for this repository"* / *"Please ensure that Dependency graph is
