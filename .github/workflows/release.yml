@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'V*.*.*'
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+jobs:
+  release:
+    name: Build & Release
+    runs-on: windows-latest
+    permissions:
+      id-token: write             # required for NuGet OIDC trusted publishing + attestations
+      contents: write             # required for creating GitHub Releases
+      attestations: write         # required for SBOM + build provenance attestations
+
+    environment: nuget
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      # Microsoft.Testing.Platform projects — run as executables, not via dotnet test.
+      - name: Test CDS.ScriptChat.Core.Tests
+        run: dotnet run --project tests/CDS.ScriptChat.Core.Tests/CDS.ScriptChat.Core.Tests.csproj --no-build --configuration Release -- --report-trx --results-directory TestResults
+
+      - name: Test CDS.ScriptChat.WinForms.Tests
+        run: dotnet run --project tests/CDS.ScriptChat.WinForms.Tests/CDS.ScriptChat.WinForms.Tests.csproj --no-build --configuration Release -- --report-trx --results-directory TestResults
+
+      - name: Pack CDS.ScriptChat.Core
+        run: dotnet pack src/CDS.ScriptChat.Core/CDS.ScriptChat.Core.csproj --no-build --configuration Release --output ./artifacts
+
+      - name: Pack CDS.ScriptChat.WinForms
+        run: dotnet pack src/CDS.ScriptChat.WinForms/CDS.ScriptChat.WinForms.csproj --no-build --configuration Release --output ./artifacts
+
+      - name: Generate SBOMs
+        run: |
+          dotnet tool install --global CycloneDX
+
+          # dotnet-CycloneDX inspects the dependency graph, not the MinVer-computed
+          # package version, and defaults metadata.component.version to 0.0.0 unless
+          # told otherwise — pull the real version back out of the .nupkg filename.
+          # Anchored regex avoids CDS.ScriptChat.Core's filename prefix-matching
+          # CDS.ScriptChat.WinForms's (and vice versa).
+          $coreVersion = (Get-ChildItem -Path ./artifacts -Filter "*.nupkg" | Where-Object { $_.BaseName -match '^CDS\.ScriptChat\.Core\.\d' } | Select-Object -First 1).BaseName.Substring('CDS.ScriptChat.Core.'.Length)
+          $winFormsVersion = (Get-ChildItem -Path ./artifacts -Filter "*.nupkg" | Where-Object { $_.BaseName -match '^CDS\.ScriptChat\.WinForms\.\d' } | Select-Object -First 1).BaseName.Substring('CDS.ScriptChat.WinForms.'.Length)
+
+          dotnet-CycloneDX src/CDS.ScriptChat.Core/CDS.ScriptChat.Core.csproj -o ./artifacts -F json -fn bom-CDS.ScriptChat.Core.json -sv $coreVersion
+          dotnet-CycloneDX src/CDS.ScriptChat.WinForms/CDS.ScriptChat.WinForms.csproj -o ./artifacts -F json -fn bom-CDS.ScriptChat.WinForms.json -sv $winFormsVersion
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ./artifacts/*.nupkg
+
+      - name: Attest SBOM — CDS.ScriptChat.Core
+        uses: actions/attest-sbom@v4
+        with:
+          subject-path: ./artifacts/CDS.ScriptChat.Core.*.nupkg
+          sbom-path: ./artifacts/bom-CDS.ScriptChat.Core.json
+
+      - name: Attest SBOM — CDS.ScriptChat.WinForms
+        uses: actions/attest-sbom@v4
+        with:
+          subject-path: ./artifacts/CDS.ScriptChat.WinForms.*.nupkg
+          sbom-path: ./artifacts/bom-CDS.ScriptChat.WinForms.json
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            ./artifacts/*.nupkg
+            ./artifacts/*.snupkg
+            ./artifacts/bom-*.json
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Authenticate with NuGet (Trusted Publishing)
+        uses: NuGet/login@v1
+        id: nuget-auth
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push packages to NuGet.org
+        run: |
+          foreach ($pkg in Get-ChildItem -Path ./artifacts -Filter "*.nupkg") {
+            dotnet nuget push $pkg.FullName --source https://api.nuget.org/v3/index.json --api-key ${{ steps.nuget-auth.outputs.NUGET_API_KEY }} --skip-duplicate
+          }
+
+      - name: Push symbol packages to NuGet.org
+        run: |
+          foreach ($pkg in Get-ChildItem -Path ./artifacts -Filter "*.snupkg") {
+            dotnet nuget push $pkg.FullName --source https://api.nuget.org/v3/index.json --api-key ${{ steps.nuget-auth.outputs.NUGET_API_KEY }} --skip-duplicate
+          }

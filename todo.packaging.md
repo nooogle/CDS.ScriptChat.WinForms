@@ -14,16 +14,20 @@ Order matters: phases 1–3 must land before the repo goes public, phases 4–6 
 
 ---
 
-## ⚠ BLOCKER — content logging must be off before anything goes public
+## ⚠ BLOCKER — content logging must be off before anything goes public *(closed 2026-08-14, see D17)*
 
-**Prompts, responses, the user's script and proposed edits are currently written
-to disk** by the test host, which runs at `Trace`. That is correct for a
-diagnostic host and unacceptable in anything shipped or public (D3). This blocks
-phase 4 and everything after it.
+**Prompts, responses, the user's script and proposed edits were originally written
+to disk** by the test host, which ran at `Trace`. That was correct for a
+diagnostic host and unacceptable in anything shipped or public (D3).
 
-The full checklist lives under "What must be removed or turned off before
-release" in `cds.scriptchat.design.md` — three items, none of them done. Do not
-mark phase 4 complete without walking that list.
+Resolved, not just gated: every content-bearing `[LoggerMessage]` this library
+ever defined has been deleted outright, `ScriptChatSession` wraps every
+`ILoggerFactory` it's given in `TraceSuppressingLoggerFactory` (closing the
+`Microsoft.Extensions.AI` dependency-level leak too), and the test host's
+`--trace` flag was removed since there's nothing left it could unlock. See D17
+and the "Content-bearing logging — removed, not gated" section in
+`cds.scriptchat.design.md` for the full account, including the two tests that
+prove it (`ScriptChatSessionLoggingTests`).
 
 Two things that make this live *now* rather than later:
 
@@ -48,7 +52,14 @@ for free (phase 2).
 
 ### 1a — Multi-target `net48` + `net10.0`
 
-Do this **first**, before anything else in this phase: it is the change most
+**Decision (2026-08-14): deferred past the first public release.** Going
+public and shipping a first NuGet release doesn't require it — it's a
+substantial, separate chunk of work (see the breakdown below) unrelated to the
+CI/publish mechanics. Ship `net10.0`/`net10.0-windows`-only first; revisit if
+a consuming host actually needs `net48`.
+
+Do this **first**, before anything else in this phase, *if and when it's picked
+back up*: it is the change most
 likely to force API changes, and those are far cheaper now than after a public
 package exists. The dependencies are all viable — `Anthropic` 12.39.0 ships
 `netstandard2.0`, and `Microsoft.Extensions.AI` / `.Abstractions` 10.8.3 ship
@@ -167,58 +178,89 @@ different version, so a host app never picks up a stale `~/.nuget/packages` entr
 
 Do this consciously, not as a side effect of pushing.
 
-- [ ] Audit the history and working tree for anything BYOK-sensitive: API keys in
-      test fixtures, sample settings files, logs under `TestResults`, `.vs`.
-      Per D3 no key should ever have been committed — confirm rather than assume.
-      A key found in *history* means rewriting history or starting a fresh repo,
-      so check before the first public push.
-- [ ] **Confirm the logging removals** listed under "What must be removed or
-      turned off before release" in `cds.scriptchat.design.md` are done — see the
-      blocker at the top of this file. Also grep the working tree and history for
-      stray `.csv`/`.log` files written by the test host at `Trace`; those contain
-      prompts, responses and script content and must not survive the flip to
-      public.
-- [ ] Repo hygiene files, copying CDS.CSharpScripting2's set: `README.md`
-      (badges, quick start, BYOK note), `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,
-      `SECURITY.md`. `LICENSE` (MIT) is already present. If the root `README.md`
-      shows the package icon, it needs the Flaticon attribution too — see
-      `assets/readme.md`.
-- [ ] Create the GitHub repo `nooogle/CDS.ScriptChat.WinForms` — the URLs are
-      already baked into `Directory.Build.props`, so they must match.
-- [ ] Branch protection on `master` plus a required CI check (phase 5).
+- [x] **Audited** the full history and working tree for anything BYOK-sensitive
+      (2026-08-14): `git log --all -p` grepped for API-key-shaped strings and
+      known provider key prefixes (`sk-ant-`, `sk-proj-`, `AIzaSy`, `ghp_`,
+      private-key PEM headers). Every hit is an obvious fake test fixture
+      (`"sk-ant-not-a-real-key"`, `"sk-ant-super-secret-key-value"`, etc.) —
+      nothing real. Also confirmed no `.csv`/`.log`/`TestResults`/`.vs` file was
+      ever committed (`git log --diff-filter=A --name-only` across all history,
+      filtered for those patterns — zero matches). Clean.
+- [x] **Confirmed the logging removals** are done — see the blocker note above
+      and D17. Nothing further needed here.
+- [x] `README.md` added at repo root (quick start, architecture, screenshot,
+      BYOK note — done in an earlier session). `LICENSE` (MIT) already present.
+      Icon shown in the root readme carries the Flaticon attribution.
+      **Still open**: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` —
+      not yet created; revisit before or shortly after the public flip.
+- [x] GitHub repo `nooogle/CDS.ScriptChat.WinForms` already exists and matches
+      the URLs baked into `Directory.Build.props` (confirmed via `gh repo view`).
+      Currently private.
+- [ ] Branch protection on `master` plus a required CI check — do this once
+      `ci.yml` (phase 5) has run at least once so the `CI` check exists to
+      select. Not yet done.
 
-## Phase 5 — GitHub Actions: CI
+## Phase 5 — GitHub Actions: CI *(done, 2026-08-14)*
 
-- [ ] We have a new standards protocol, review and refresh this task and review with me before working on the items. See: "C:\dev\CI-CD-STANDARDS.md"
-- [ ] `.github/workflows/ci.yml` — build + test on every push and pull request.
-      **Do not copy CDS.CSharpScripting2's trigger**: that file is named "CI" but
-      only fires on `v*` tags, so it never guards a normal commit. Trigger on
-      `push` to `master` and on `pull_request`.
-- [ ] `runs-on: windows-latest` (non-negotiable — `net10.0-windows` + WinForms).
-- [ ] `actions/setup-dotnet@v4` with `10.0.x`; NuGet package cache keyed on
-      `**/*.csproj` + `**/*.slnx`.
-- [ ] Test invocation: the test projects are **Microsoft.Testing.Platform**, so
-      use `dotnet run --project tests/<Project>` per the house convention rather
-      than `dotnet test` (which has VSTest integration issues on .NET 10).
-      `TestingPlatformDotnetTestSupport` is set, so `dotnet test` *may* work —
-      decide once, in CI, and use the same command locally.
-- [ ] Publish the TRX results as a workflow artifact; consider a test-summary
-      action so failures are readable from the PR page.
-- [ ] Optional: a `pack` job on CI that packs but does not push, so packaging
-      breakage is caught on every commit rather than at release time.
+Superseded the draft plan that used to be here — built directly against
+`C:\dev\CI-CD-STANDARDS.md`, the fleet-wide convention finalised after this repo
+was deliberately excluded from the August rollout ("none are ready for public
+release yet. Revisit once they are.") This is that revisit.
 
-## Phase 6 — GitHub Actions: publish to NuGet.org
+- [x] `.github/workflows/ci.yml` — `push`/`pull_request` to `master` +
+      `workflow_dispatch`. `runs-on: windows-latest` (`net10.0-windows` +
+      WinForms). `actions/setup-dotnet@v6` with `10.0.x`.
+- [x] Test invocation confirmed **locally** against the actual MTP test
+      projects before committing to the workflow shape: `dotnet run --project
+      tests/<Project>.csproj --no-build --configuration Release -- --report-trx
+      --results-directory TestResults`, run from the repo root, lands the
+      `.trx` files at `./TestResults/` as expected — verified by actually
+      running both (`CDS.ScriptChat.Core.Tests`: 66 passed;
+      `CDS.ScriptChat.WinForms.Tests`: 77 passed) rather than assuming the path
+      semantics of `dotnet run --project`.
+- [x] TRX results uploaded as a workflow artifact (`actions/upload-artifact@v7`).
+- [x] Added beyond the original phase 5 scope, per the standards doc:
+      `dependency-review` job (PR-only; needs the "Dependency graph" repo
+      setting enabled — **done**, confirmed by the user), plus separate
+      `.github/workflows/codeql.yml`, `.github/workflows/scorecard.yml`, and
+      `.github/dependabot.yml` (nuget + github-actions ecosystems).
+- [ ] Optional `pack`-but-don't-push CI job — not added; `release.yml`'s pack
+      step already runs on every tag push, judged sufficient for a two-package
+      repo this size.
 
-- [ ] `.github/workflows/publish.yml` triggered on `v*` tags (matching the MinVer
-      prefix from phase 2), based on CDS.CSharpScripting2's version.
-- [ ] Use **OIDC trusted publishing** (`NuGet/login@v1`) rather than a long-lived
-      API key. Requires: `permissions: id-token: write`, a GitHub `environment`
-      (the reference calls it `nuget`), a `NUGET_USER` secret, and a trusted
-      publishing policy configured on nuget.org for this repo/workflow.
-- [ ] First publish of a brand-new package ID cannot use a trusted publishing
-      policy scoped to an existing package — either push the first version
-      manually with an API key, or create the policy scoped to a package *pattern*
-      (e.g. `CDS.ScriptChat.*`). Check which before tagging.
+## Phase 6 — GitHub Actions: publish to NuGet.org *(workflow done, nuget.org side still open)*
+
+- [x] `.github/workflows/release.yml` — triggered on `V*.*.*` tags (matches the
+      `MinVerTagPrefix` already set in `Directory.Build.props`). **Named
+      `release.yml`, not `publish.yml`** — the standards doc explicitly
+      deprecates the latter name. Multi-package variant (packs, tests, SBOMs,
+      and attests both `CDS.ScriptChat.Core` and `CDS.ScriptChat.WinForms`),
+      adapted from `CDS.CSharpScripting2`'s worked two-package reference.
+      Filename/version-extraction regex verified locally against a real
+      `dotnet pack` output before committing (`CDS.ScriptChat.Core.1.0.1-*.nupkg`
+      / `CDS.ScriptChat.WinForms.1.0.1-*.nupkg` — anchored patterns, no
+      prefix-collision risk between the two package names).
+- [x] **OIDC trusted publishing** wired (`NuGet/login@v1`,
+      `permissions: id-token: write`, `environment: nuget`). The GitHub-side
+      prerequisites — `nuget` environment and `NUGET_USER` secret — are
+      **done** (created by the user, 2026-08-14).
+- [x] SBOM generation (`dotnet-CycloneDX`, with the `-sv` version fix) and
+      build-provenance/SBOM attestations, per the standards doc's supply-chain
+      additions — not in the original phase 6 draft, added because they're free
+      and the fleet-wide convention now includes them.
+- [ ] **Still open, nuget.org side (not something CI or repo settings can do)**:
+      no trusted publishing *policy* exists yet on nuget.org for either package,
+      because neither package has ever been published. First publish of a
+      brand-new package ID can't use a policy scoped to an existing package —
+      either push the first version manually with a classic API key and then
+      scope a policy to it, or create the policy scoped to a package *pattern*
+      (e.g. `CDS.ScriptChat.*`) if nuget.org's UI supports that pre-publish.
+      Check which before tagging the first real release.
+- [ ] Rehearse on a prerelease tag (e.g. `V1.1.0-preview.1`) before cutting a
+      real one. Note: `V1.0.0` already exists as a tag (local and pushed) but
+      is 8 commits behind current `master` (predates milestone 2 and the D17
+      logging work) — the real release needs a fresh tag, not a re-push of
+      `V1.0.0`.
 
 ### ID prefix reservation
 
@@ -309,5 +351,17 @@ exists. Both items above are missing conveniences, not wrong seams.
 Phases 1b, 2 and 3 are **done** — `pack-local.ps1` produces both packages into
 `C:\dev\localfeed` (registered as the `cds-local` NuGet source) and a scratch
 WinForms app consumes them. Phase 1a (multi-targeting) is deliberately *not*
-done: it is not needed for local testing and is a large enough change to deserve
-its own session.
+done: it is not needed for local testing, deferred past the first public
+release (see decision under phase 1a above), and is a large enough change to
+deserve its own session.
+
+**2026-08-14**: Phases 4 and 5 are done, and phase 6 is done on the CI side —
+the audit is clean, all five workflow files exist
+(`ci.yml`/`release.yml`/`codeql.yml`/`scorecard.yml`/`dependabot.yml`), and the
+`nuget` GitHub environment + `NUGET_USER` secret + Dependency graph are set up.
+**Still open before the repo can go public and cut a real release**: verify
+`ci.yml` actually goes green on a real push (workflow files are untested until
+they run), branch protection on `master`, the nuget.org trusted-publishing
+policy (blocked on the first publish — see phase 6), and the actual flip to
+public. `CONTRIBUTING.md`/`CODE_OF_CONDUCT.md`/`SECURITY.md` are also still
+outstanding from phase 4.
