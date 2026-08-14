@@ -91,22 +91,26 @@ public sealed class ScriptChatSession
         ArgumentNullException.ThrowIfNull(chatClient);
 
         _options = options ?? new ScriptChatSessionOptions();
-        _logger = _options.LoggerFactory?.CreateLogger(typeof(ScriptChatSession)) ?? NullLogger.Instance;
+
+        // Wrapped once, here, and used for everything below — the one chokepoint every logger
+        // this session or its dependencies see passes through. No caller-visible logging exists
+        // above Trace in this library any more, but Microsoft.Extensions.AI's own
+        // FunctionInvokingChatClient logs full function arguments and results at Trace (the
+        // entire proposed script, for propose_script_edit) — this wrapper makes that
+        // unreachable regardless of how the host's own logging pipeline is configured (D17).
+        var loggerFactory = _options.LoggerFactory is null
+            ? null
+            : new TraceSuppressingLoggerFactory(_options.LoggerFactory);
+
+        _logger = loggerFactory?.CreateLogger(typeof(ScriptChatSession)) ?? NullLogger.Instance;
 
         // Function invocation is inside the logging client, so the log records every provider
         // round-trip a turn makes — the tool call and the follow-up — rather than collapsing
         // them into one entry. That distinction is the whole point of the log when a tool-using
-        // turn goes wrong.
-        var builder = chatClient.AsBuilder().UseFunctionInvocation(_options.LoggerFactory);
-
-        // UseLogging resolves its factory with GetRequiredService when handed null, so it is
-        // added only when there is one to give it. UseFunctionInvocation tolerates null.
-        if (_options.LoggerFactory is not null)
-        {
-            builder = builder.UseLogging(_options.LoggerFactory);
-        }
-
-        _chatClient = builder.Build();
+        // turn goes wrong. UseLogging is deliberately not added: Microsoft.Extensions.AI's
+        // LoggingChatClient only ever logs at Trace, so under the wrapper above it would never
+        // write anything — a permanently inert pipeline stage, not worth carrying.
+        _chatClient = chatClient.AsBuilder().UseFunctionInvocation(loggerFactory).Build();
 
         _tools =
         [
@@ -114,7 +118,7 @@ public sealed class ScriptChatSession
             AIFunctionFactory.Create(ProposeScriptEdit, name: "propose_script_edit"),
         ];
 
-        _logger.SessionCreated(_tools.Count, _logger.IsEnabled(LogLevel.Trace));
+        _logger.SessionCreated(_tools.Count);
     }
 
     /// <summary>
@@ -182,7 +186,6 @@ public sealed class ScriptChatSession
             var userTurn = BuildUserTurn(userMessage, currentScript);
 
             _logger.TurnStarted(turnIndex, userMessage.Length, currentScript.Length, _history.Count);
-            _logger.TurnRequestContent(turnIndex, userTurn);
 
             _history.Add(new ChatMessage(ChatRole.User, userTurn));
             AddTurn(new ChatTurn(ChatTurnRole.User, userMessage, null, null, EditDisposition.None), currentScript);
@@ -221,7 +224,6 @@ public sealed class ScriptChatSession
                 response.FinishReason?.Value,
                 response.Usage?.InputTokenCount,
                 response.Usage?.OutputTokenCount);
-            _logger.TurnResponseContent(turnIndex, text);
 
             return new AssistantTurnResult(text, proposal, [.. _symbolsLookedUp]);
         }
@@ -393,7 +395,6 @@ public sealed class ScriptChatSession
         var result = prompt.ToString();
 
         _logger.SystemPromptBuilt(result.Length, hasOrientation);
-        _logger.SystemPromptContent(result);
 
         return result;
     }
@@ -445,7 +446,6 @@ public sealed class ScriptChatSession
             symbolName,
             result.Namespace,
             result.Overloads.Count);
-        _logger.SymbolLookupContent(symbolName, result.Signature, result.XmlDocSummary);
 
         return new LookupSymbolResponse(
             Found: true,
@@ -465,7 +465,6 @@ public sealed class ScriptChatSession
         string summary)
     {
         _logger.EditProposed(newScript.Length, summary.Length, _capturedProposal is not null);
-        _logger.EditProposalContent(summary, newScript);
 
         // Last call wins if the model proposes twice; the prompt asks for at most one. Capturing
         // CallId here — the one place that genuinely knows it — means FindProposalResultContent

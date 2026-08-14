@@ -55,7 +55,7 @@ public static class HostOrientationResolver
     /// Where to record which source supplied the blurb, and the path probed when neither did.
     /// This is worth logging because "the file was not deployed beside the executable" is the
     /// commonest reason a host's orientation silently fails to reach the model. The blurb's own
-    /// text is logged at <see cref="LogLevel.Trace"/> only.
+    /// text is never logged, at any level (D17).
     /// </param>
     /// <returns>
     /// The blurb, or <see langword="null"/> when neither source supplies one. A blank result
@@ -84,7 +84,6 @@ public static class HostOrientationResolver
             {
                 var trimmed = fromFile.Trim();
                 log.OrientationResolvedFromFile(path, trimmed.Length);
-                log.OrientationContent(trimmed);
                 return trimmed;
             }
         }
@@ -98,7 +97,6 @@ public static class HostOrientationResolver
 
         var blurb = fromProperty.Trim();
         log.OrientationResolvedFromHostContext(path, blurb.Length);
-        log.OrientationContent(blurb);
         return blurb;
     }
 }

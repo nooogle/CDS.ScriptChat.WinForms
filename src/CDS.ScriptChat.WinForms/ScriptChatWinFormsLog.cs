@@ -14,8 +14,8 @@ namespace CDS.ScriptChat.WinForms;
 /// key store. The core library uses the 1000 band.
 /// </para>
 /// <para>
-/// The same level discipline applies here as in the core library (D16): user and model content
-/// only ever appears at <see cref="LogLevel.Trace"/>. API key material appears at no level at
+/// The same discipline applies here as in the core library (D16, D17): no user or model
+/// content is ever logged, at any level. API key material appears at no level at
 /// all — not its value, not a prefix, not a hash (D3). Where a key's presence matters, its
 /// length is logged instead, which is enough to tell a truncated paste from a wrong key.
 /// </para>

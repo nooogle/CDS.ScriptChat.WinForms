@@ -22,12 +22,15 @@ and Fable.
   (see `todo.packaging.md`).
 - **Outstanding from Milestone 1** — both items now closed:
   - ~~The pre-release logging checklist... test host still runs at `Trace`~~ —
-    closed 2026-08-14. See D17 and "What must be removed or turned off before
-    release" under Logging.
+    closed 2026-08-14, then hardened the same day. See D17 and "Content-bearing
+    logging — removed, not gated" under Logging: content-bearing logging isn't
+    just off by default any more, the capability has been removed from the
+    library entirely, including the equivalent risk inside
+    `Microsoft.Extensions.AI`'s own function-invocation logging.
   - ~~`ScriptChatClientFactory` throws `NotSupportedException` for `OpenAI`~~ —
     closed by milestone 2. `Grok` still throws; remains deferred, not a gap.
 - **Milestone 2** (UC2, OpenAI wiring) — **complete**, including live verification
-  (65 Core + 77 WinForms, solution builds clean, zero warnings). `ScriptChatClientFactory`
+  (66 Core + 77 WinForms, solution builds clean, zero warnings). `ScriptChatClientFactory`
   wires `Microsoft.Extensions.AI.OpenAI` for real; `ScriptChatSession` rewrites
   the frozen `propose_script_edit` tool-result on accept/reject so a later
   turn's history matches what actually happened to the script (UC2).
@@ -167,13 +170,16 @@ app can use whichever fits its own project layout better.
 | D13 | Diff granularity is full-script replacement in v1, matching the typical size of scripts in these apps. Line-level diffs are an explicit future milestone, not a v1 concern (see Future Milestones below). |
 | D14 | Every UI component (panel, settings sub-panel, any dialog) is built as a standard WinForms Designer class — `.cs` / `.Designer.cs` / `.resx` triplet, `InitializeComponent()`, no hand-rolled layout-in-code, no third-party designer-incompatible UI framework. Must open and edit cleanly in the VS 2026 WinForms Designer. Adding transcript items to a container at runtime is data binding, not layout, and is not covered by this rule. |
 | D15 | **Nothing use-case-specific ships in the library.** No Roslyn, no CDS.CSharpScripting2, no Scintilla, no OpenCvSharp — no dependency that presumes a particular host app, scripting engine, or editor control. Symbol lookup is an interface the host implements (`ISymbolLookupProvider`); the script buffer is reached through host-supplied delegates. The library ships a no-op symbol provider so the tool-calling path works out of the box, and the test host app carries the worked example of a real one. Supersedes the `CDS.ScriptChat.Roslyn` project in the original architecture and the Scintilla dependency in D7. |
-| D16 | **Logging is standard `Microsoft.Extensions.Logging` throughout, and content is confined to `Trace`.** Every component takes an `ILoggerFactory` (not a bare `ILogger`), so the whole `Microsoft.Extensions.AI` pipeline — function invocation and the provider round-trips — is instrumented from one property. Levels are split so the split is enforceable rather than a matter of care at each call site: `Information` and above carry **structure only** (names, lengths, counts, timings, event IDs, exceptions), while prompts, responses, proposed scripts, edit summaries, symbol signatures, and the orientation blurb appear at **`Trace` and nowhere else**. API keys appear at no level at all (D3) — only a key's length, which is what distinguishes a truncated paste from a wrong key. See "Logging" below. |
-| D17 | **`Trace` (or any other content-bearing logging) must never be the default minimum level anywhere** — not in a consuming host, and not in this repo's own test host. D16 constrains *where* content can be logged (`Trace` only); D17 constrains *whether it's ever on by default*, closing the gap where the test host ran at `Trace` unconditionally from milestone 1 until this was raised and fixed. The test host now defaults to `Information` and only logs content behind an explicit `--trace` command-line flag, with the running window's log-file label saying so plainly when it's active. Nothing in this library or its samples may log, cache, telemetry-report, or otherwise transmit prompt text, script text, response text, or API key material anywhere except the direct provider SDK call and (for content) an explicitly, deliberately opted-into `Trace` sink. |
+| D16 | **Logging is standard `Microsoft.Extensions.Logging` throughout, and carries structure only, never content.** Every component takes an `ILoggerFactory` (not a bare `ILogger`), so the whole `Microsoft.Extensions.AI` pipeline — function invocation and the provider round-trips — is instrumented from one property. Every message, at every level, carries only structure — names, lengths, counts, timings, event IDs, exceptions. No message anywhere logs prompt text, response text, proposed scripts, edit summaries, symbol signatures, or the orientation blurb. API keys appear at no level at all (D3) — only a key's length, which is what distinguishes a truncated paste from a wrong key. *(Superseded in part by D17: an earlier version of this decision logged content at `Trace`; that capability has been removed outright, not just gated.)* See "Logging" below. |
+| D17 | **No content-bearing log message, cache, telemetry report, or diagnostic artifact may exist anywhere in this library or its samples, at any level — not gated behind an opt-in, removed outright.** Milestone 2's logging review initially fixed the test host defaulting to `Trace` by making `Trace` an explicit opt-in flag; that was rejected as insufficient (2026-08-14) because an opt-in is still a lever something else can pull — a misconfigured host, or another library sharing the same logging pipeline reconfiguring the same provider to `Trace` — with no code change on this library's part. That includes leaks this library doesn't write itself: `Microsoft.Extensions.AI`'s own `FunctionInvokingChatClient` logs full function arguments and results at `Trace` (the entire proposed script, for `propose_script_edit`), and `LoggingChatClient` logs full message and option content at `Trace` — both independent of anything in `ScriptChatLog`. `ScriptChatSession` closes both by wrapping every `ILoggerFactory` it's given in `TraceSuppressingLoggerFactory`, an internal decorator that reports `Trace` as disabled to every logger it hands out, including to those dependencies, regardless of how the underlying provider is configured. This is a hard boundary enforced by the type system at the one chokepoint every logger in this pipeline passes through, not a convention or a default that could be reconfigured back on. |
 
 ## Logging
 
 Added after milestone 1's first end-to-end run, because a turn that "didn't obviously
-work" left nothing behind to diagnose it with.
+work" left nothing behind to diagnose it with. Revised twice since (2026-08-14, see below):
+first to stop the test host defaulting to `Trace`, then — on the reasonable objection that a
+default is just a lever something else could pull — to remove content-bearing logging from
+the library outright rather than gate it.
 
 Message templates and event IDs live in one file per assembly — `ScriptChatLog` in Core,
 `ScriptChatWinFormsLog` in WinForms — as source-generated `[LoggerMessage]` methods, so
@@ -188,42 +194,59 @@ IDs are stable and a log can be filtered by ID rather than by matching on prose.
 | 2100–2199 | `ScriptChatSettingsPanel` — provider changes, apply, connection test |
 | 2200–2299 | `DpapiApiKeyStore` — load, save, clear |
 
+Six event IDs (1002, 1011, 1013, 1023, 1031, 1203) were content-bearing `Trace` messages and
+have been retired, not reused — a log captured before 2026-08-14 may reference them; nothing
+after that date will.
+
 The test host supplies a small CSV `ILoggerProvider` (`samples/…/Logging/`), writing one
 file per run under `%LOCALAPPDATA%\CDS.ScriptChat.TestHost\logs\`, with a link to it at
 the bottom of the window. It lives in the sample, not the library, per D15 — a consuming
 app brings its own logging.
 
-### What must be removed or turned off before release — logging review (2026-08-14): closed
+### Content-bearing logging — removed, not gated (2026-08-14)
 
-The test host used to run at `Trace` unconditionally, meaning **its log file contained the
-user's script, their messages, the model's replies, and any proposed edit** on every run.
-That was right for early diagnostic work and wrong to leave as the default; D3 rules out
-this kind of content recording in a product, and D17 now makes "never on by default"
-explicit rather than implied.
+The test host originally ran at `Trace` unconditionally from milestone 1 onward, meaning
+**its log file contained the user's script, their messages, the model's replies, and any
+proposed edit** on every run. The first fix made `Trace` an explicit `--trace` opt-in
+instead of the default. That was the wrong stopping point: a bad actor — or an intermediate
+library sharing the same logging pipeline, or a simple host misconfiguration — can
+reconfigure a provider's minimum level without touching this library's code at all, so an
+opt-in default is not a guarantee, only a convention. It also wouldn't have been enough on
+its own: `Microsoft.Extensions.AI`'s own `FunctionInvokingChatClient` and `LoggingChatClient`
+log full function arguments/results and full message/option content at `Trace`,
+independently of anything `ScriptChatLog` defines — removing this library's own content
+messages would have left that dependency-level leak completely open.
 
-Because of the level discipline in D16, switching it off was a floor change rather than a
-code edit — done as of this review:
+What's actually in place now:
 
-- [x] **Test host**: `Program.cs` now defaults to `LogLevel.Information`; `Trace` is reachable
-      only via an explicit `--trace` command-line flag, and the window's log-file label says
-      so plainly when it's active, so a run recording content is never silently so.
-- [x] **Re-checked**: every `Information`-and-above message in both `ScriptChatLog.cs` and
-      `ScriptChatWinFormsLog.cs` was read end to end — all carry only lengths, counts,
-      booleans, enums, or IDs; every content-bearing template (prompt, response, proposed
-      script, symbol signature, orientation blurb) is at `Trace`; every API-key-adjacent
-      field logs `.Length` only, never the key. `ScriptChatSessionLoggingTests` covers this
-      for the session in an automated test
-      (`SendAsync_AtInformation_RecordsNoScriptOrPromptOrResponseContent`) — extend it if new
-      content-bearing messages are added, and re-run this same manual check before any future
-      release, since new log call sites won't add themselves to that test automatically.
-- [ ] **Consuming hosts** (Fable, the OpenCvSharp Playground): standing guidance, not a
-      one-time task — never configure `Trace` for the `CDS.ScriptChat.*` categories in a real
-      deployment. `Information` gives the full call/result/timing picture with no user
-      content in it. D17 exists so this is the host's explicit choice to override, never an
-      accidental default it inherited.
+- **Every content-bearing `[LoggerMessage]` this library ever defined has been deleted**, not
+  demoted — `SystemPromptContent`, `TurnRequestContent`, `TurnResponseContent`,
+  `SymbolLookupContent`, `EditProposalContent`, `OrientationContent`. There is no message left
+  anywhere in `ScriptChatLog` or `ScriptChatWinFormsLog` that carries a prompt, script,
+  response, summary, symbol signature, or the orientation blurb, at any level.
+- **`ScriptChatSession` wraps every `ILoggerFactory` it's given in
+  `TraceSuppressingLoggerFactory`** before using it for anything — its own logger, and the
+  factory handed to `UseFunctionInvocation`. That wrapper reports `Trace` as disabled to every
+  logger it creates, unconditionally, regardless of what the underlying provider's minimum
+  level is configured to. This is what closes the `Microsoft.Extensions.AI` dependency-level
+  leak: `FunctionInvokingChatClient` and any future Trace-level logging a dependency adds
+  simply never sees `Trace` reported as enabled, so it never writes.
+- **`UseLogging(...)` was removed from the session's pipeline entirely** — it only ever logged
+  at `Trace` (per its own documentation, "not logged at other levels"), so under the wrapper
+  above it would have been a permanently inert stage.
+- **The test host's `--trace` flag was removed again**, since there is nothing left it could
+  meaningfully unlock; keeping it would have been misleading rather than protective. The host
+  now simply runs at `Information`, unconditionally.
+- **Proven, not just asserted**: `ScriptChatSessionLoggingTests` includes
+  `SendAsync_EvenWhenTheUnderlyingProviderAllowsTrace_RecordsNoContent` and
+  `SendAsync_ProposesAnEditWithTraceAllowed_DoesNotLeakViaFunctionInvocationLogging` — both run
+  a turn against a logger provider explicitly configured to accept `Trace` (standing in for a
+  reconfigured pipeline) and assert nothing sensitive is recorded, including via
+  `Microsoft.Extensions.AI`'s own internals.
 
-Owner: Jon. The test-host and re-check items are done; the consuming-host guidance is
-ongoing and applies whenever Fable or the Playground actually wire this library in.
+Owner: Jon. Closed 2026-08-14. If a future dependency upgrade or a new feature ever seems to
+need content at `Trace` again for diagnosis, that is a decision to bring back to this log,
+not a default to quietly re-enable — see D17.
 
 ## Use Cases
 

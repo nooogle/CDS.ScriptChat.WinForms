@@ -21,17 +21,22 @@ add a one-line pointer below instead of copying it in full.
   layout. (D14)
 - BYOK only. Never hardcode, log, or transmit an API key anywhere except the
   provider SDK call itself. No telemetry on prompt/response content. (D3)
-- Logging is MEL via `ILoggerFactory`. Prompts, responses, proposed scripts and
-  symbol signatures go at `Trace` and nowhere else; `Information` and above carry
-  structure only (lengths, counts, timings, IDs). API keys at no level. New log
+- Logging is MEL via `ILoggerFactory`. Every message, at every level, carries
+  only structure (lengths, counts, timings, IDs). API keys at no level. New log
   messages go in `ScriptChatLog` / `ScriptChatWinFormsLog`, not inline. (D16)
-- **`Trace` — or any other logging, telemetry, cache, crash report, or
-  diagnostic artifact that could carry a user's prompt, script, response, or
-  API key — must never be the default in this repo or anything it ships.**
-  Content-bearing capture is opt-in only, deliberately triggered by whoever
-  is diagnosing something, never silently on. Before adding any new logging,
-  caching, or diagnostics — here or in any future feature — check it against
-  this rule, not just against D16's *where*. (D17)
+- **No content-bearing log message, cache, telemetry report, or diagnostic
+  artifact may exist anywhere in this library or its samples, at any level —
+  removed outright, never just gated behind an opt-in flag or a default.**
+  Prompts, scripts, responses, summaries, symbol signatures, the orientation
+  blurb, and API keys must never be logged, cached, or transmitted anywhere
+  except the direct provider SDK call itself. An opt-in default is not a
+  guarantee — a bad actor, a misconfigured host, or another library sharing
+  the same logging pipeline can reconfigure it without touching this
+  library's code. `ScriptChatSession` enforces this at a hard boundary
+  (`TraceSuppressingLoggerFactory`) that also blocks `Microsoft.Extensions.AI`'s
+  own `Trace`-level content logging, not just this library's own messages.
+  Before adding any new logging, caching, or diagnostics — here or in any
+  future feature — check it against this rule. (D17)
 - Proposed code edits arrive only via the `propose_script_edit` tool call and
   are shown as a diff, never auto-applied, never parsed out of markdown
   fences. (D5)

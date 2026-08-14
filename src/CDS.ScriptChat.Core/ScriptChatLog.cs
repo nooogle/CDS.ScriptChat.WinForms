@@ -14,15 +14,22 @@ namespace CDS.ScriptChat.Core;
 /// 2000 band.
 /// </para>
 /// <para>
-/// <b>Level discipline (see D16).</b> Prompt text, response text, proposed scripts, edit
-/// summaries, symbol signatures, and the orientation blurb are logged at
-/// <see cref="LogLevel.Trace"/> and nowhere else. Every other level carries only structure —
-/// names, lengths, counts, timings, and exceptions. That split is what makes the feature
-/// shippable: a host that never enables <see cref="LogLevel.Trace"/> records no user content,
-/// with no code change needed.
+/// <b>No content-bearing message exists here, at any level (D16, D17).</b> Prompt text, response
+/// text, proposed scripts, edit summaries, symbol signatures, and the orientation blurb are never
+/// logged — not at <see cref="LogLevel.Trace"/>, not anywhere. Earlier this library logged that
+/// content at Trace, on the theory that a host which never enabled Trace was safe; D17 rejects
+/// that theory, because Trace can be re-enabled by anything sharing the same logging pipeline —
+/// a host misconfiguration, or another library reconfiguring the same provider — with no code
+/// change on this library's part. There is now nothing left for that to re-enable: every message
+/// here carries only structure — names, lengths, counts, timings, event IDs, and exceptions.
+/// <see cref="ScriptChatSession"/> additionally wraps every <see cref="ILoggerFactory"/> it's
+/// given in <see cref="TraceSuppressingLoggerFactory"/>, so <see cref="LogLevel.Trace"/> is
+/// unreachable even for <c>Microsoft.Extensions.AI</c>'s own function-invocation and chat-client
+/// logging, which is not defined in this file and not something this file's discipline alone
+/// could constrain.
 /// </para>
 /// <para>
-/// API keys are never logged at any level, not even at <see cref="LogLevel.Trace"/> (D3).
+/// API keys are never logged at any level (D3).
 /// </para>
 /// </remarks>
 internal static partial class ScriptChatLog
@@ -31,8 +38,8 @@ internal static partial class ScriptChatLog
         EventId = 1000,
         EventName = "SessionCreated",
         Level = LogLevel.Information,
-        Message = "Session created. Tools={ToolCount} ContentLogging={ContentLoggingEnabled}")]
-    public static partial void SessionCreated(this ILogger logger, int toolCount, bool contentLoggingEnabled);
+        Message = "Session created. Tools={ToolCount}")]
+    public static partial void SessionCreated(this ILogger logger, int toolCount);
 
     [LoggerMessage(
         EventId = 1001,
@@ -40,13 +47,6 @@ internal static partial class ScriptChatLog
         Level = LogLevel.Debug,
         Message = "System prompt built. Length={PromptLength} HasOrientation={HasOrientation}")]
     public static partial void SystemPromptBuilt(this ILogger logger, int promptLength, bool hasOrientation);
-
-    [LoggerMessage(
-        EventId = 1002,
-        EventName = "SystemPromptContent",
-        Level = LogLevel.Trace,
-        Message = "System prompt content: {SystemPrompt}")]
-    public static partial void SystemPromptContent(this ILogger logger, string systemPrompt);
 
     [LoggerMessage(
         EventId = 1010,
@@ -59,13 +59,6 @@ internal static partial class ScriptChatLog
         int userMessageLength,
         int scriptLength,
         int historyMessages);
-
-    [LoggerMessage(
-        EventId = 1011,
-        EventName = "TurnRequestContent",
-        Level = LogLevel.Trace,
-        Message = "Turn {TurnIndex} request content: {UserTurn}")]
-    public static partial void TurnRequestContent(this ILogger logger, int turnIndex, string userTurn);
 
     [LoggerMessage(
         EventId = 1012,
@@ -82,13 +75,6 @@ internal static partial class ScriptChatLog
         string? finishReason,
         long? inputTokens,
         long? outputTokens);
-
-    [LoggerMessage(
-        EventId = 1013,
-        EventName = "TurnResponseContent",
-        Level = LogLevel.Trace,
-        Message = "Turn {TurnIndex} response content: {ResponseText}")]
-    public static partial void TurnResponseContent(this ILogger logger, int turnIndex, string? responseText);
 
     [LoggerMessage(
         EventId = 1014,
@@ -138,17 +124,6 @@ internal static partial class ScriptChatLog
     public static partial void SymbolLookupNotFound(this ILogger logger, long elapsedMs, string symbolName);
 
     [LoggerMessage(
-        EventId = 1023,
-        EventName = "SymbolLookupContent",
-        Level = LogLevel.Trace,
-        Message = "lookup_symbol returned. Symbol={SymbolName} Signature={Signature} Summary={XmlDocSummary}")]
-    public static partial void SymbolLookupContent(
-        this ILogger logger,
-        string symbolName,
-        string? signature,
-        string? xmlDocSummary);
-
-    [LoggerMessage(
         EventId = 1030,
         EventName = "EditProposed",
         Level = LogLevel.Information,
@@ -158,13 +133,6 @@ internal static partial class ScriptChatLog
         int scriptLength,
         int summaryLength,
         bool replacesEarlierProposal);
-
-    [LoggerMessage(
-        EventId = 1031,
-        EventName = "EditProposalContent",
-        Level = LogLevel.Trace,
-        Message = "Proposed edit. Summary={Summary} Script={ProposedScript}")]
-    public static partial void EditProposalContent(this ILogger logger, string summary, string proposedScript);
 
     [LoggerMessage(
         EventId = 1032,
@@ -238,11 +206,4 @@ internal static partial class ScriptChatLog
         Level = LogLevel.Warning,
         Message = "No orientation blurb: no file at {Path} and the host context supplied none. The model will work without host-specific orientation.")]
     public static partial void OrientationNotResolved(this ILogger logger, string path);
-
-    [LoggerMessage(
-        EventId = 1203,
-        EventName = "OrientationContent",
-        Level = LogLevel.Trace,
-        Message = "Orientation blurb content: {Blurb}")]
-    public static partial void OrientationContent(this ILogger logger, string blurb);
 }

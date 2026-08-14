@@ -11,17 +11,10 @@ internal static class Program
     public const string ApplicationName = "CDS.ScriptChat.TestHost";
 
     /// <summary>Runs the test host.</summary>
-    /// <param name="args">
-    /// Command-line arguments. <c>--trace</c> is the only one recognised: it opts into
-    /// content-bearing logging (see <see cref="LoggerFactory"/> setup below). Without it, this
-    /// run records no prompt, reply, or script content anywhere (D3, D17).
-    /// </param>
     [STAThread]
-    private static void Main(string[] args)
+    private static void Main()
     {
         ApplicationConfiguration.Initialize();
-
-        var traceRequested = args.Contains("--trace", StringComparer.OrdinalIgnoreCase);
 
         // Constructed here, not inside the builder: neither the logger factory nor the DI
         // container disposes a provider it did not create, so this scope is what closes the file.
@@ -29,15 +22,17 @@ internal static class Program
 
         using var loggerFactory = LoggerFactory.Create(builder =>
         {
-            // Information by default: at that level the log carries only structure — no prompt,
-            // reply, or script content (D16). Trace is diagnostic-only and carries all of that
-            // content, so per D17 it must never be the default here or in any consuming host —
-            // only an explicit, deliberate --trace on the command line turns it on.
-            builder.SetMinimumLevel(traceRequested ? LogLevel.Trace : LogLevel.Information);
+            // Information carries only structure — no prompt, reply, or script content (D16).
+            // There is no opt-in to raise this to Trace: CDS.ScriptChat has no content-bearing
+            // log message left at any level, and ScriptChatSession wraps every ILoggerFactory it
+            // is given so that Trace is unreachable even for its dependencies' own logging, no
+            // matter how this provider's minimum level is configured (D17). Raising this to
+            // Trace would not reveal anything; it would just be a misleading thing to offer.
+            builder.SetMinimumLevel(LogLevel.Information);
             builder.AddProvider(csvProvider);
             builder.AddDebug();
         });
 
-        Application.Run(new MainForm(loggerFactory, csvProvider.FilePath, traceRequested));
+        Application.Run(new MainForm(loggerFactory, csvProvider.FilePath));
     }
 }

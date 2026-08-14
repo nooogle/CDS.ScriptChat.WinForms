@@ -77,8 +77,8 @@ public partial class ScriptChatPanel : UserControl
     /// invocation, and the provider round-trips, each under its own log category.
     /// </para>
     /// <para>
-    /// At <see cref="LogLevel.Trace"/> the chain records prompt and response content (D16).
-    /// Hosts that ship should not enable Trace. API keys are logged at no level (D3).
+    /// No prompt, script, response, or API key content is ever logged, at any level (D3, D16,
+    /// D17) — this isn't a level a host could accidentally enable, the capability doesn't exist.
     /// </para>
     /// </remarks>
     [Browsable(false)]
