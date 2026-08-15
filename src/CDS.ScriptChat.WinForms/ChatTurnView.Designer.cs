@@ -31,7 +31,7 @@ partial class ChatTurnView
     {
         _layout = new System.Windows.Forms.TableLayoutPanel();
         _roleLabel = new System.Windows.Forms.Label();
-        _messageLabel = new System.Windows.Forms.Label();
+        _messageLabel = new System.Windows.Forms.TextBox();
         _diffTextBox = new System.Windows.Forms.RichTextBox();
         _actionsPanel = new System.Windows.Forms.FlowLayoutPanel();
         _acceptButton = new System.Windows.Forms.Button();
@@ -77,11 +77,14 @@ partial class ChatTurnView
         //
         // _messageLabel
         //
-        _messageLabel.AutoSize = true;
+        _messageLabel.BackColor = System.Drawing.SystemColors.Window;
+        _messageLabel.BorderStyle = System.Windows.Forms.BorderStyle.None;
         _messageLabel.Location = new System.Drawing.Point(8, 27);
         _messageLabel.Margin = new System.Windows.Forms.Padding(0, 0, 0, 4);
+        _messageLabel.Multiline = true;
         _messageLabel.Name = "_messageLabel";
-        _messageLabel.Size = new System.Drawing.Size(0, 15);
+        _messageLabel.ReadOnly = true;
+        _messageLabel.Size = new System.Drawing.Size(384, 15);
         _messageLabel.TabIndex = 1;
         //
         // _diffTextBox
@@ -159,7 +162,7 @@ partial class ChatTurnView
 
     private System.Windows.Forms.TableLayoutPanel _layout;
     private System.Windows.Forms.Label _roleLabel;
-    private System.Windows.Forms.Label _messageLabel;
+    private System.Windows.Forms.TextBox _messageLabel;
     private System.Windows.Forms.RichTextBox _diffTextBox;
     private System.Windows.Forms.FlowLayoutPanel _actionsPanel;
     private System.Windows.Forms.Button _acceptButton;

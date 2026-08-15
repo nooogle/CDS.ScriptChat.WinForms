@@ -1,5 +1,10 @@
 # CDS.ScriptChat
 
+[![CI](https://github.com/nooogle/CDS.ScriptChat.WinForms/actions/workflows/ci.yml/badge.svg)](https://github.com/nooogle/CDS.ScriptChat.WinForms/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/nooogle/CDS.ScriptChat.WinForms/actions/workflows/codeql.yml/badge.svg)](https://github.com/nooogle/CDS.ScriptChat.WinForms/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/nooogle/CDS.ScriptChat.WinForms/badge)](https://securityscorecards.dev/viewer/?uri=github.com/nooogle/CDS.ScriptChat.WinForms)
+[![NuGet: CDS.ScriptChat.WinForms](https://img.shields.io/nuget/v/CDS.ScriptChat.WinForms?label=CDS.ScriptChat.WinForms)](https://www.nuget.org/packages/CDS.ScriptChat.WinForms)
+[![NuGet: CDS.ScriptChat.Core](https://img.shields.io/nuget/v/CDS.ScriptChat.Core?label=CDS.ScriptChat.Core)](https://www.nuget.org/packages/CDS.ScriptChat.Core)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/)
 
