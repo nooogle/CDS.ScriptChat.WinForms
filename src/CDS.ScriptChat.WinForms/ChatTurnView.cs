@@ -178,7 +178,8 @@ public partial class ChatTurnView : UserControl
         _applyingContentLayout = true;
         try
         {
-            _messageLabel.MaximumSize = new Size(available, 0);
+            _messageLabel.Width = available;
+            _messageLabel.Height = MeasureMessageHeight(available);
             _diffTextBox.Width = available;
             Height = _layout.PreferredSize.Height;
         }
@@ -186,5 +187,25 @@ public partial class ChatTurnView : UserControl
         {
             _applyingContentLayout = false;
         }
+    }
+
+    /// <summary>
+    /// Computes the height <see cref="_messageLabel"/> needs to show its text wrapped to
+    /// <paramref name="width"/>, since — unlike a <see cref="Label"/> — a <see cref="TextBox"/>
+    /// does not size itself to fit wrapped content.
+    /// </summary>
+    private int MeasureMessageHeight(int width)
+    {
+        if (!_messageLabel.Visible || string.IsNullOrEmpty(_messageLabel.Text))
+        {
+            return 0;
+        }
+
+        var size = TextRenderer.MeasureText(
+            _messageLabel.Text,
+            _messageLabel.Font,
+            new Size(width, int.MaxValue),
+            TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+        return size.Height;
     }
 }
