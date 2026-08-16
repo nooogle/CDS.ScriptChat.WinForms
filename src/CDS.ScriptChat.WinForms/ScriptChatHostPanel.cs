@@ -139,8 +139,7 @@ public partial class ScriptChatHostPanel : UserControl
             return;
         }
 
-        // Only replace the client once the new one is in hand, so a failure above leaves the
-        // previous configuration working.
+        // Only replace the client once the new one is in hand.
         var previous = _chatClient;
         _chatClient = client;
         previous?.Dispose();
