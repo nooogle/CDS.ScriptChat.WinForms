@@ -318,23 +318,18 @@ Parked here because this is the file that gets read, not because it belongs to t
 phases above. Raised 2026-08-11 from the OpenCvSharp Playground / Workbench
 extraction; nothing has been acted on in this repo.
 
-- [ ] **A host with more than one script has to build the multi-target panel
-      itself.** `ScriptChatPanel` is one target: `ScriptTextProvider`,
-      `ScriptTextSetter` and one attached `ScriptChatSession`. The Playground has
-      two scripts (workspace and processing) and so wrote ~300 lines on top —
-      `ScriptChatHostPanel` (a selector, a session per target, and a single shared
-      `IChatClient` whose lifetime spans both), `ScriptChatTarget` (display name +
-      the two delegates + a `Func<ScriptChatSessionOptions>` factory, so each
-      conversation's orientation is built when it starts rather than when the app
-      did), and `ScriptChatSettingsForm` (a `Form` wrapper around
-      `ScriptChatSettingsPanel`, which ships as a panel only).
-      **None of it is Playground-specific** — it is "one panel, N scripts", which
-      any host with more than one script needs. Worth considering for the library:
-      a `SetTargets(params ScriptChatTarget[])` shape, and a settings *form*
-      alongside the settings panel.
-      Source to lift, if useful: `src\CDS.OpenCvSharpPlayground.App\`
-      `ScriptChatHostPanel.cs`, `ScriptChatTarget.cs`, `ScriptChatSettingsForm.cs`
-      in `C:\dev\nooogle\CDS.OpenCvSharpPlayground`.
+- [x] **A host with more than one script has to build the multi-target panel
+      itself** *(done)*. Lifted into the library: `ScriptChatTarget` (in
+      `CDS.ScriptChat.Core` — display name, the two delegates, and a
+      `Func<ScriptChatSessionOptions>` factory), `ScriptChatHostPanel` (in
+      `CDS.ScriptChat.WinForms` — `SetTargets(params ScriptChatTarget[])`, a
+      `ComboBox` selector rather than the Playground's fixed pair of
+      `RadioButton`s so it scales past two targets, one session per target
+      sharing a single `IChatClient`), and `ScriptChatSettingsForm` (a `Form`
+      wrapper around `ScriptChatSettingsPanel`, ported near-verbatim). The
+      Playground migrated onto all three, deleting its local copies — see its
+      `CLAUDE.md`. 9 new tests (`HostPanelTests.cs`, plus two in
+      `DesignerSmokeTests.cs`), 86 in the WinForms suite.
 
 - [ ] **No local or self-hosted provider.** `ScriptChatProvider` is
       `Claude | OpenAI | Grok`, and `ScriptChatClientOptions` has no base-URL

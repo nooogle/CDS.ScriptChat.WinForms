@@ -16,6 +16,9 @@ What it gives you:
   to the assistant. The library ships only the interface.
 - `IScriptChatHostContext` — host-supplied description of the app the script
   runs in.
+- `ScriptChatTarget` — describes one of a host's scripts (name, read/write
+  delegates, session-options factory) for `CDS.ScriptChat.WinForms`'s
+  `ScriptChatHostPanel` to drive a conversation per script.
 
 For a ready-made WinForms UI on top of this, see **CDS.ScriptChat.WinForms**.
 

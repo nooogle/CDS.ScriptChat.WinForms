@@ -435,11 +435,13 @@ history, matching how the conversation actually happened.
   narrow scope shows where it actually falls short in practice. Added as new
   members with default implementations so existing host implementations keep
   compiling.
-- **Multi-script host support**: real feedback from extracting the OpenCvSharp
-  Playground app, parked in `todo.packaging.md` ("Not packaging — API feedback
-  from a consuming host"). A host with more than one script has to build its
-  own selector/session-per-target scaffolding today; worth a `SetTargets(...)`
-  shape in the library once a second consuming host confirms the need.
+- ~~**Multi-script host support**~~ **Done.** Real feedback from extracting the
+  OpenCvSharp Playground app, parked in `todo.packaging.md` ("Not packaging —
+  API feedback from a consuming host"). Shipped as `ScriptChatTarget` (Core) and
+  `ScriptChatHostPanel` (WinForms, `SetTargets(params ScriptChatTarget[])`),
+  generalised to any number of targets rather than the Playground's original
+  two — see `todo.packaging.md` for the detail. The Playground has migrated
+  onto it.
 - **Local/self-hosted provider** (Ollama, LM Studio, llama.cpp): no base-URL
   override exists today. Also parked in `todo.packaging.md`. Realistically
   rides on top of the OpenAI wiring landing in milestone 2, once that's proven.

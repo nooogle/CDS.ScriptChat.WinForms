@@ -164,9 +164,41 @@ public sealed class DesignerSmokeTests
         act.Should().Throw<ArgumentNullException>();
     }
 
+    [TestMethod]
+    public void ScriptChatSettingsForm_Constructed_InitialisesWithoutThrowing()
+    {
+        using var form = new ScriptChatSettingsForm();
+
+        form.Controls.Count.Should().BeGreaterThan(0);
+    }
+
+    [TestMethod]
+    public void ScriptChatSettingsForm_KeyStore_ForwardsToTheInnerPanel()
+    {
+        using var form = new ScriptChatSettingsForm();
+        var store = new StubApiKeyStore();
+
+        form.KeyStore = store;
+
+        form.KeyStore.Should().BeSameAs(store);
+    }
+
     private static FlowLayoutPanel FindTranscript(ScriptChatPanel panel) =>
         panel.Controls.Find("_transcriptPanel", searchAllChildren: true).OfType<FlowLayoutPanel>().Single();
 
     private static RichTextBox FindDiffTextBox(ChatTurnView view) =>
         view.Controls.Find("_diffTextBox", searchAllChildren: true).OfType<RichTextBox>().Single();
+
+    private sealed class StubApiKeyStore : IApiKeyStore
+    {
+        public string? Load(ScriptChatProvider provider) => null;
+
+        public void Save(ScriptChatProvider provider, string apiKey)
+        {
+        }
+
+        public void Clear(ScriptChatProvider provider)
+        {
+        }
+    }
 }

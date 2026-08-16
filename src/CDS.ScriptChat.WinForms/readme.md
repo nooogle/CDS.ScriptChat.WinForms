@@ -6,7 +6,11 @@ they are editing, and the assistant can propose edits to it.
 - `ScriptChatPanel` — the chat UI. It reaches the host's script buffer through
   caller-supplied delegates, so it works with any editor control (Scintilla,
   a plain `TextBox`, anything) and depends on none of them.
-- `ScriptChatSettingsPanel` — provider, model and API key configuration.
+- `ScriptChatHostPanel` — for a host with more than one script: a selector plus
+  one `ScriptChatPanel`, driving a separate conversation per `ScriptChatTarget`
+  while sharing a single chat client.
+- `ScriptChatSettingsPanel` / `ScriptChatSettingsForm` — provider, model and API
+  key configuration, as a panel or a ready-made dialogue.
 - `DpapiApiKeyStore` — per-user API key storage via Windows DPAPI. Swap in your
   own via `IApiKeyStore`.
 
