@@ -53,7 +53,7 @@ public partial class ChatTurnView : UserControl
         ArgumentNullException.ThrowIfNull(turn);
 
         _roleLabel.Text = BuildRoleCaption(turn);
-        _messageLabel.Text = turn.Text ?? string.Empty;
+        _messageLabel.SetMarkdown(turn.Text);
         _messageLabel.Visible = !string.IsNullOrWhiteSpace(turn.Text);
 
         if (turn.ProposedCode is null)
@@ -179,7 +179,7 @@ public partial class ChatTurnView : UserControl
         try
         {
             _messageLabel.Width = available;
-            _messageLabel.Height = MeasureMessageHeight(available);
+            _messageLabel.Height = _messageLabel.Visible ? _messageLabel.GetPreferredContentHeight() : 0;
             _diffTextBox.Width = available;
             Height = _layout.PreferredSize.Height;
         }
@@ -187,25 +187,5 @@ public partial class ChatTurnView : UserControl
         {
             _applyingContentLayout = false;
         }
-    }
-
-    /// <summary>
-    /// Computes the height <see cref="_messageLabel"/> needs to show its text wrapped to
-    /// <paramref name="width"/>, since — unlike a <see cref="Label"/> — a <see cref="TextBox"/>
-    /// does not size itself to fit wrapped content.
-    /// </summary>
-    private int MeasureMessageHeight(int width)
-    {
-        if (!_messageLabel.Visible || string.IsNullOrEmpty(_messageLabel.Text))
-        {
-            return 0;
-        }
-
-        var size = TextRenderer.MeasureText(
-            _messageLabel.Text,
-            _messageLabel.Font,
-            new Size(width, int.MaxValue),
-            TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
-        return size.Height;
     }
 }

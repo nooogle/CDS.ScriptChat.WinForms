@@ -115,6 +115,14 @@ public partial class MainForm : Form
         _settingsPanel.ConfigurationApplied += OnConfigurationApplied;
     }
 
+    /// <summary>
+    /// Seeds the transcript with one canned Markdown-bearing turn via <see cref="Demo.MarkdownDemo"/>,
+    /// bypassing the settings panel entirely — no provider key needed. Used only by the
+    /// <c>--demo=markdown</c> launch switch, for UI-automation coverage of the rendered turn
+    /// against a real, painted window.
+    /// </summary>
+    internal Task SeedMarkdownDemoAsync() => Demo.MarkdownDemo.SeedAsync(_chatPanel, _scriptTextBox.Text);
+
     private void OnConfigurationApplied(object? sender, ScriptChatConfigurationEventArgs e)
     {
         // Reads scriptchat.context.md from the output directory; falls back to a host-supplied
