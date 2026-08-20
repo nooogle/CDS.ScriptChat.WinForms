@@ -27,6 +27,11 @@ public partial class ScriptChatSettingsForm : Form
     public ScriptChatSettingsForm()
     {
         InitializeComponent();
+
+        // DialogResult alone only auto-closes a form shown via ShowDialog(); hosts typically
+        // keep one instance for the session and show it with Show(), so the button needs an
+        // explicit Close() to do anything in that non-modal case too.
+        _closeButton.Click += (_, _) => Close();
     }
 
     /// <summary>Raised when the user applies a configuration that is complete enough to use.</summary>

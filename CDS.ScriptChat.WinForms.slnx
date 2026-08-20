@@ -9,5 +9,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/CDS.ScriptChat.Core.Tests/CDS.ScriptChat.Core.Tests.csproj" />
     <Project Path="tests/CDS.ScriptChat.WinForms.Tests/CDS.ScriptChat.WinForms.Tests.csproj" />
+    <Project Path="tests/CDS.ScriptChat.WinForms.UITests/CDS.ScriptChat.WinForms.UITests.csproj" />
   </Folder>
 </Solution>

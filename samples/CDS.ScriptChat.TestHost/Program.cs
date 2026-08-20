@@ -11,8 +11,13 @@ internal static class Program
     public const string ApplicationName = "CDS.ScriptChat.TestHost";
 
     /// <summary>Runs the test host.</summary>
+    /// <param name="args">
+    /// Recognises one switch, <c>--demo=markdown</c>: seeds the transcript with a canned
+    /// Markdown-bearing turn (see <see cref="Demo.MarkdownDemo"/>) instead of requiring a
+    /// configured provider key, for UI-automation coverage against a real window.
+    /// </param>
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
 
@@ -33,6 +38,13 @@ internal static class Program
             builder.AddDebug();
         });
 
-        Application.Run(new MainForm(loggerFactory, csvProvider.FilePath));
+        var mainForm = new MainForm(loggerFactory, csvProvider.FilePath);
+
+        if (Array.IndexOf(args, "--demo=markdown") >= 0)
+        {
+            mainForm.SeedMarkdownDemoAsync().GetAwaiter().GetResult();
+        }
+
+        Application.Run(mainForm);
     }
 }

@@ -109,6 +109,7 @@ partial class ScriptChatPanel
         _inputTextBox.Multiline = true;
         _inputTextBox.Name = "_inputTextBox";
         _inputTextBox.PlaceholderText = "Ask about the script, or describe a change…";
+        _inputTextBox.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
         _inputTextBox.Size = new System.Drawing.Size(334, 59);
         _inputTextBox.TabIndex = 0;
         _inputTextBox.KeyDown += OnInputTextBoxKeyDown;

@@ -238,8 +238,8 @@ public partial class ScriptChatPanel : UserControl
 
     private async void OnInputTextBoxKeyDown(object? sender, KeyEventArgs e)
     {
-        // Enter sends; Shift+Enter inserts a newline.
-        if (e.KeyCode != Keys.Enter || e.Shift)
+        // Enter sends; Shift+Enter or Ctrl+Enter inserts a newline instead.
+        if (e.KeyCode != Keys.Enter || e.Shift || e.Control)
         {
             return;
         }
@@ -312,6 +312,10 @@ public partial class ScriptChatPanel : UserControl
         {
             _turnInFlight = false;
             UpdateEnabledState();
+
+            // Whether this send was confirmed via the two-Enter arm-then-send or a mouse click
+            // on Send, hand focus straight back so the next message can be typed immediately.
+            _inputTextBox.Focus();
         }
     }
 
