@@ -71,13 +71,13 @@ jobs:
           subject-path: ./artifacts/*.nupkg
 
       - name: Attest SBOM — CDS.ScriptChat.Core
-        uses: actions/attest-sbom@v4
+        uses: actions/attest@v4
         with:
           subject-path: ./artifacts/CDS.ScriptChat.Core.*.nupkg
           sbom-path: ./artifacts/bom-CDS.ScriptChat.Core.json
 
       - name: Attest SBOM — CDS.ScriptChat.WinForms
-        uses: actions/attest-sbom@v4
+        uses: actions/attest@v4
         with:
           subject-path: ./artifacts/CDS.ScriptChat.WinForms.*.nupkg
           sbom-path: ./artifacts/bom-CDS.ScriptChat.WinForms.json
