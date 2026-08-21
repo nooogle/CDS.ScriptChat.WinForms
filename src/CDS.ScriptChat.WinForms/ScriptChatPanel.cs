@@ -21,10 +21,24 @@ namespace CDS.ScriptChat.WinForms;
 /// </remarks>
 public partial class ScriptChatPanel : UserControl
 {
+    private static readonly Color s_addedBackColour = Color.FromArgb(223, 245, 226);
+    private static readonly Color s_removedBackColour = Color.FromArgb(255, 226, 226);
+
     private ScriptChatSession? _session;
     private ILoggerFactory? _loggerFactory;
     private ILogger _logger = NullLogger.Instance;
     private bool _turnInFlight;
+
+    /// <summary>
+    /// Index into <see cref="ScriptChatSession.Turns"/> of the one proposal the decision bar
+    /// currently acts on, or <see langword="null"/> when none is awaiting review.
+    /// </summary>
+    /// <remarks>
+    /// Only one proposal can be pending at a time — <see cref="UpdateEnabledState"/> disables
+    /// sending a new turn while this is set, so a proposal can never be silently superseded or
+    /// buried by later chat before the user decides on it (D5).
+    /// </remarks>
+    private int? _pendingTurnIndex;
 
     /// <summary>
     /// The chat client created by <see cref="Configure"/>, which this panel owns and must
@@ -175,7 +189,16 @@ public partial class ScriptChatPanel : UserControl
 
             for (var i = 0; i < session.Turns.Count; i++)
             {
-                AppendTurn(session.Turns[i], sessionTurnIndex: i, baselineScript: session.GetScriptBaseline(i));
+                AppendTurnToTranscript(session.Turns[i], session.GetScriptBaseline(i));
+
+                if (session.Turns[i].Disposition == EditDisposition.PendingReview)
+                {
+                    // A session can arrive with a proposal from before this panel attached to
+                    // it; if more than one is somehow still pending, the most recent is the one
+                    // the decision bar acts on — the rest are stale by definition, since only
+                    // one turn can be pending going forward.
+                    _pendingTurnIndex = i;
+                }
             }
 
             _logger.SessionAttached(
@@ -212,23 +235,9 @@ public partial class ScriptChatPanel : UserControl
     /// <summary>Removes every turn from the transcript.</summary>
     public void ClearTranscript()
     {
-        // Snapshot first: disposing a control removes it from this collection, so disposing
-        // while enumerating it would skip every other turn and leak its handles.
-        var views = _transcriptPanel.Controls.Cast<Control>().ToArray();
-
-        _transcriptPanel.Controls.Clear();
-
-        foreach (var view in views)
-        {
-            view.Dispose();
-        }
-    }
-
-    /// <inheritdoc />
-    protected override void OnSizeChanged(EventArgs e)
-    {
-        base.OnSizeChanged(e);
-        ResizeTurnViews();
+        _transcriptTextBox.SetMarkdown(null);
+        _pendingTurnIndex = null;
+        UpdateEnabledState();
     }
 
     private async void OnSendButtonClick(object? sender, EventArgs e)
@@ -251,11 +260,12 @@ public partial class ScriptChatPanel : UserControl
 
     private async Task SendCurrentInputAsync()
     {
-        if (_turnInFlight || _session is null || ScriptTextProvider is null)
+        if (_turnInFlight || _session is null || ScriptTextProvider is null || _pendingTurnIndex is not null)
         {
             _logger.SendIgnored(
                 _turnInFlight ? "a turn is already in flight"
                 : _session is null ? "no session is attached"
+                : _pendingTurnIndex is not null ? "a proposed edit is still awaiting a decision"
                 : "no ScriptTextProvider is configured");
             return;
         }
@@ -281,14 +291,20 @@ public partial class ScriptChatPanel : UserControl
 
         try
         {
-            AppendTurn(
+            AppendTurnToTranscript(
                 new ChatTurn(ChatTurnRole.User, userMessage, null, null, EditDisposition.None),
-                sessionTurnIndex: _session.Turns.Count,
                 baselineScript: null);
 
             var result = await _session.SendAsync(userMessage, script).ConfigureAwait(true);
 
-            AppendTurn(_session.Turns[^1], sessionTurnIndex: _session.Turns.Count - 1, baselineScript: script);
+            var assistantTurn = _session.Turns[^1];
+            AppendTurnToTranscript(assistantTurn, baselineScript: script);
+
+            if (assistantTurn.Disposition == EditDisposition.PendingReview)
+            {
+                _pendingTurnIndex = _session.Turns.Count - 1;
+            }
+
             SetStatus("Ready.");
 
             _logger.SendCompleted(
@@ -302,9 +318,8 @@ public partial class ScriptChatPanel : UserControl
             // handler would take the host app down, so it is surfaced and logged instead. The
             // transcript only gets ex.Message; the log is where the stack trace survives.
             _logger.SendFailed(ex, stopwatch.ElapsedMilliseconds);
-            AppendTurn(
+            AppendTurnToTranscript(
                 new ChatTurn(ChatTurnRole.Assistant, $"That turn failed: {ex.Message}", null, null, EditDisposition.None),
-                sessionTurnIndex: null,
                 baselineScript: null);
             SetStatus("Last turn failed.");
         }
@@ -319,25 +334,87 @@ public partial class ScriptChatPanel : UserControl
         }
     }
 
-    private void AppendTurn(ChatTurn turn, int? sessionTurnIndex, string? baselineScript)
+    /// <summary>Appends one turn — role caption, prose, and a proposal's diff if it has one.</summary>
+    private void AppendTurnToTranscript(ChatTurn turn, string? baselineScript)
     {
-        var view = new ChatTurnView
+        var caption = BuildRoleCaption(turn);
+        var markdown = string.IsNullOrWhiteSpace(turn.Text)
+            ? $"**{caption}**"
+            : $"**{caption}**\n\n{turn.Text}";
+
+        _transcriptTextBox.AppendMarkdown(markdown);
+
+        if (turn.ProposedCode is not null)
         {
-            Width = GetTurnViewWidth(),
-            SessionTurnIndex = sessionTurnIndex,
-        };
-
-        view.EditAccepted += OnTurnEditAccepted;
-        view.EditRejected += OnTurnEditRejected;
-        view.Bind(turn, baselineScript);
-
-        _transcriptPanel.Controls.Add(view);
-        _transcriptPanel.ScrollControlIntoView(view);
+            AppendProposalDiff(turn.ProposedCode, baselineScript);
+        }
     }
 
-    private void OnTurnEditAccepted(object? sender, EventArgs e)
+    /// <summary>
+    /// Appends a proposal's code as an unparsed, monospaced block — a line-by-line diff against
+    /// <paramref name="baselineScript"/> when one is known, or the proposal in full otherwise
+    /// (which is what happens for a turn restored from an existing session).
+    /// </summary>
+    private void AppendProposalDiff(string proposedCode, string? baselineScript)
     {
-        if (sender is not ChatTurnView view || !TryGetPendingTurn(view, out var turn))
+        // AppendPlainText never starts its own new paragraph the way AppendMarkdown does, so
+        // without this the first diff line would run straight on from the caption/prose above.
+        _transcriptTextBox.AppendPlainText(string.Empty);
+
+        if (baselineScript is null)
+        {
+            foreach (var line in proposedCode.ReplaceLineEndings("\n").Split('\n'))
+            {
+                _transcriptTextBox.AppendPlainText(line);
+            }
+
+            return;
+        }
+
+        var diff = ScriptDiff.Compute(baselineScript, proposedCode);
+
+        if (!ScriptDiff.HasChanges(diff))
+        {
+            _transcriptTextBox.AppendMarkdown("*(The proposal is identical to the current script.)*");
+            return;
+        }
+
+        foreach (var line in diff)
+        {
+            var (marker, backColour) = line.Kind switch
+            {
+                ScriptDiffLineKind.Added => ("+ ", (Color?)s_addedBackColour),
+                ScriptDiffLineKind.Removed => ("- ", (Color?)s_removedBackColour),
+                _ => ("  ", null),
+            };
+
+            _transcriptTextBox.AppendPlainText(marker + line.Text, backColour);
+        }
+    }
+
+    private static string BuildRoleCaption(ChatTurn turn)
+    {
+        var speaker = turn.Role == ChatTurnRole.User ? "You" : "Assistant";
+
+        if (!turn.HasProposedEdit)
+        {
+            return speaker;
+        }
+
+        var state = turn.Disposition switch
+        {
+            EditDisposition.Accepted => "edit accepted",
+            EditDisposition.Rejected => "edit rejected",
+            _ => "proposed an edit",
+        };
+
+        var summary = string.IsNullOrWhiteSpace(turn.EditSummary) ? null : $" — {turn.EditSummary}";
+        return $"{speaker} · {state}{summary}";
+    }
+
+    private void OnAcceptButtonClick(object? sender, EventArgs e)
+    {
+        if (!TryGetPendingTurn(out var turn))
         {
             _logger.EditActionIgnored();
             return;
@@ -354,6 +431,7 @@ public partial class ScriptChatPanel : UserControl
         // script would arrive in the editor as one long line. Normalise here rather than in
         // every host's setter.
         var script = turn.ProposedCode!.ReplaceLineEndings();
+        var index = _pendingTurnIndex!.Value;
 
         try
         {
@@ -363,35 +441,44 @@ public partial class ScriptChatPanel : UserControl
         {
             // The host's setter failed, so the buffer is in an unknown state — leave the
             // proposal pending rather than marking it accepted.
-            _logger.EditApplyFailed(ex, view.SessionTurnIndex!.Value);
+            _logger.EditApplyFailed(ex, index);
             SetStatus($"Could not apply the edit: {ex.Message}");
             return;
         }
 
-        RecordDisposition(view, EditDisposition.Accepted);
+        _session!.SetEditDisposition(index, EditDisposition.Accepted);
+        _transcriptTextBox.AppendMarkdown("*Edit accepted.*");
+        _pendingTurnIndex = null;
+        UpdateEnabledState();
+
         SetStatus("Edit applied.");
-        _logger.EditAccepted(view.SessionTurnIndex!.Value, script.Length);
+        _logger.EditAccepted(index, script.Length);
         EditAccepted?.Invoke(this, new ScriptEditAcceptedEventArgs(script, turn.EditSummary));
     }
 
-    private void OnTurnEditRejected(object? sender, EventArgs e)
+    private void OnRejectButtonClick(object? sender, EventArgs e)
     {
-        if (sender is not ChatTurnView view || !TryGetPendingTurn(view, out _))
+        if (!TryGetPendingTurn(out _))
         {
             _logger.EditActionIgnored();
             return;
         }
 
-        RecordDisposition(view, EditDisposition.Rejected);
+        var index = _pendingTurnIndex!.Value;
+        _session!.SetEditDisposition(index, EditDisposition.Rejected);
+        _transcriptTextBox.AppendMarkdown("*Edit rejected.*");
+        _pendingTurnIndex = null;
+        UpdateEnabledState();
+
         SetStatus("Edit rejected.");
-        _logger.EditRejected(view.SessionTurnIndex!.Value);
+        _logger.EditRejected(index);
     }
 
-    private bool TryGetPendingTurn(ChatTurnView view, out ChatTurn turn)
+    private bool TryGetPendingTurn(out ChatTurn turn)
     {
         turn = null!;
 
-        if (_session is null || view.SessionTurnIndex is not { } index || index >= _session.Turns.Count)
+        if (_session is null || _pendingTurnIndex is not { } index || index >= _session.Turns.Count)
         {
             return false;
         }
@@ -406,35 +493,6 @@ public partial class ScriptChatPanel : UserControl
         return true;
     }
 
-    private void RecordDisposition(ChatTurnView view, EditDisposition disposition)
-    {
-        var index = view.SessionTurnIndex!.Value;
-        _session!.SetEditDisposition(index, disposition);
-
-        // Re-bind so the caption updates and the buttons disappear; the diff itself stays.
-        view.Bind(_session.Turns[index], _session.GetScriptBaseline(index));
-    }
-
-    private void ResizeTurnViews()
-    {
-        var width = GetTurnViewWidth();
-        foreach (Control control in _transcriptPanel.Controls)
-        {
-            control.Width = width;
-        }
-    }
-
-    /// <summary>
-    /// Gets the width a turn view should take. A <see cref="FlowLayoutPanel"/> gives its
-    /// children no width of their own, so it is set here — and shrunk by the scrollbar so
-    /// adding a turn cannot introduce a horizontal one.
-    /// </summary>
-    private int GetTurnViewWidth()
-    {
-        var width = _transcriptPanel.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 4;
-        return Math.Max(width, 50);
-    }
-
     private void SetStatus(string status)
     {
         _statusLabel.Text = status;
@@ -442,8 +500,12 @@ public partial class ScriptChatPanel : UserControl
 
     private void UpdateEnabledState()
     {
-        var canSend = IsReady && !_turnInFlight;
+        var canSend = IsReady && !_turnInFlight && _pendingTurnIndex is null;
         _sendButton.Enabled = canSend;
         _inputTextBox.Enabled = canSend;
+
+        var hasPendingProposal = _pendingTurnIndex is not null;
+        _acceptButton.Enabled = hasPendingProposal;
+        _rejectButton.Enabled = hasPendingProposal;
     }
 }

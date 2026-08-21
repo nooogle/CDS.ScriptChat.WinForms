@@ -172,6 +172,7 @@ app can use whichever fits its own project layout better.
 | D15 | **Nothing use-case-specific ships in the library.** No Roslyn, no CDS.CSharpScripting2, no Scintilla, no OpenCvSharp — no dependency that presumes a particular host app, scripting engine, or editor control. Symbol lookup is an interface the host implements (`ISymbolLookupProvider`); the script buffer is reached through host-supplied delegates. The library ships a no-op symbol provider so the tool-calling path works out of the box, and the test host app carries the worked example of a real one. Supersedes the `CDS.ScriptChat.Roslyn` project in the original architecture and the Scintilla dependency in D7. |
 | D16 | **Logging is standard `Microsoft.Extensions.Logging` throughout, and carries structure only, never content.** Every component takes an `ILoggerFactory` (not a bare `ILogger`), so the whole `Microsoft.Extensions.AI` pipeline — function invocation and the provider round-trips — is instrumented from one property. Every message, at every level, carries only structure — names, lengths, counts, timings, event IDs, exceptions. No message anywhere logs prompt text, response text, proposed scripts, edit summaries, symbol signatures, or the orientation blurb. API keys appear at no level at all (D3) — only a key's length, which is what distinguishes a truncated paste from a wrong key. *(Superseded in part by D17: an earlier version of this decision logged content at `Trace`; that capability has been removed outright, not just gated.)* See "Logging" below. |
 | D17 | **No content-bearing log message, cache, telemetry report, or diagnostic artifact may exist anywhere in this library or its samples, at any level — not gated behind an opt-in, removed outright.** Milestone 2's logging review initially fixed the test host defaulting to `Trace` by making `Trace` an explicit opt-in flag; that was rejected as insufficient (2026-08-14) because an opt-in is still a lever something else can pull — a misconfigured host, or another library sharing the same logging pipeline reconfiguring the same provider to `Trace` — with no code change on this library's part. That includes leaks this library doesn't write itself: `Microsoft.Extensions.AI`'s own `FunctionInvokingChatClient` logs full function arguments and results at `Trace` (the entire proposed script, for `propose_script_edit`), and `LoggingChatClient` logs full message and option content at `Trace` — both independent of anything in `ScriptChatLog`. `ScriptChatSession` closes both by wrapping every `ILoggerFactory` it's given in `TraceSuppressingLoggerFactory`, an internal decorator that reports `Trace` as disabled to every logger it hands out, including to those dependencies, regardless of how the underlying provider is configured. This is a hard boundary enforced by the type system at the one chokepoint every logger in this pipeline passes through, not a convention or a default that could be reconfigured back on. |
+| D18 | **The transcript is one continuously-appended `MarkdownTextBox`-derived control, not one `ChatTurnView` `UserControl` per turn; Accept/Reject moved from per-turn inline buttons to a single permanent pair below the transcript.** `ChatTurnView` (per-turn `UserControl`, each hosting its own richedit-backed `MarkdownTextBox` and `RichTextBox` for the diff) inside a `FlowLayoutPanel` with `AutoScroll = true` broke mouse-wheel scrolling: a richedit control consumes `WM_MOUSEWHEEL` unconditionally and never bubbles it to its parent, so hovering over any turn's text — not just the diff box — stalled the outer scroll. A single control sidesteps this entirely, since there is nothing above it to chain to; it needed `CDS.Markdown.Lite`'s `MarkdownTextBox` to grow two capabilities it didn't have (`AppendMarkdown` for rendered prose, `AppendPlainText` for unparsed monospaced diff lines with a background colour), added upstream in `CDS.Markdown` 1.5.5 since nothing else consumed the type yet and the interface was ours to change freely. Consequence: a diff can no longer word-wrap independently from prose (one control, one `WordWrap` setting) — accepted, since Markdown code fences already wrapped the same way in the old per-turn control. Moving Accept/Reject off individual turns required a new invariant the panel enforces: **at most one proposal is ever `PendingReview` at a time** — `SendCurrentInputAsync` now refuses to start a new turn while one is outstanding (previously unconstrained; the model could in principle emit a second proposal before the user acted on the first). The decision bar is enabled exactly while that invariant holds a pending turn, disabled otherwise; deciding it appends a short follow-up line to the transcript rather than rewriting the original diff's caption in place. |
 
 ## Logging
 
@@ -371,13 +372,20 @@ projection over the raw API message history, not a replacement for it.
 
 ## UI shape
 
-One scrolling panel. User turns and assistant turns appear in order, each
-lightly formatted (code blocks monospaced, a small label distinguishing
-"answered" turns from "proposed an edit" turns). A proposed edit renders as a
-diff inline in its turn, with Accept/Reject buttons; accepting hands the new
-script to the host's setter delegate and marks that turn's `Disposition`. No separate
-transcript/preview split — the whole point is one continuous read-top-to-bottom
-history, matching how the conversation actually happened.
+One scrolling transcript — a single `MarkdownTextBox`-derived control that
+turns are continuously appended into (D18), not one WinForms control per
+turn. User turns and assistant turns appear in order, each lightly formatted
+(code blocks monospaced, a bold caption distinguishing "answered" turns from
+"proposed an edit" turns). A proposed edit renders as a diff inline in its
+turn (added/removed lines colour-coded), with Accept/Reject as a single
+permanent pair of buttons below the transcript rather than inline per-turn
+controls — enabled only while exactly one proposal is awaiting a decision,
+disabled otherwise (D18). Accepting hands the new script to the host's setter
+delegate and marks that turn's `Disposition`; both accept and reject append a
+short follow-up line to the transcript rather than rewriting the original
+diff's caption. No separate transcript/preview split — the whole point is one
+continuous read-top-to-bottom history, matching how the conversation actually
+happened.
 
 ## Build order
 
