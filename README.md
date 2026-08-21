@@ -8,48 +8,60 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/)
 
-A drop-in **script + chat panel** for .NET/WinForms apps that let a user edit a
-script: the user talks to an LLM about the script open in their editor, and
-the assistant can propose edits to it. Edits always arrive as a reviewable
-diff — never applied automatically.
+**TL;DR:** A drop-in WinForms `UserControl` that lets a user chat with an LLM
+about a script they're editing. The assistant answers questions and proposes
+edits; edits always show up as a reviewable diff and never touch the buffer
+until the user clicks Accept. Not tied to any scripting engine, editor
+control, or AI provider — you supply two delegates and an API key, and it
+works with Claude or OpenAI today.
 
-Not tied to any particular scripting engine, editor control, or AI provider.
-The library reaches your script through two delegates you supply and your API
-key through a settings panel you wire up, so it works with Scintilla, a plain
-`TextBox`, or anything else — and with Claude or OpenAI today, more providers
-later.
+![The CDS.ScriptChat test host, mid-review: a plain-TextBox editor on the left, the chat panel on the right showing a user turn and an assistant reply that proposed a one-line patch, rendered as a green/red diff with Accept edit and Reject edit enabled below it](assets/screenshot-diff-review.png)
 
-![The CDS.ScriptChat test host: a script editor alongside the chat panel, provider settings, and a live view of symbol lookups](assets/screenshot-test-host.png)
-
-*The bundled test host — a minimal reference app showing the panel wired up
-end to end. Every consuming app wires the same two pieces shown on screen:
-`ScriptChatSettingsPanel` (top right) for BYOK onboarding, and
-`ScriptChatPanel` (below it) for the conversation itself.*
+*The bundled test host, caught mid-review. The assistant proposed a
+one-line change — an anchored find/replace patch, not a full rewrite (see
+[What it can do](#what-it-can-do)) — rendered as a diff with Accept/Reject
+enabled until the user decides. `ScriptChatSettingsPanel` (top right) handles
+BYOK onboarding; `ScriptChatPanel` (the transcript, diff, and input below it)
+is the conversation itself. Every consuming app wires the same two controls.*
 
 ## Why
 
-Several in-house apps (Fable, the OpenCvSharp Playground, and eventually a
-GroundTruth scripting surface) each have a scripting surface where "let the
-user ask an AI about this script" is a recurring want. Rather than build that
-once per app, `CDS.ScriptChat` builds it once, host-agnostically, and each app
-supplies only what's specific to it: how to read/write its script buffer, and
-how to answer "what does this symbol look like" against its own API surface.
+Any WinForms app with a script or code editing surface eventually gets the
+same request: "let the user ask an AI about this." Building that well is more
+work than it looks — prompt design, tool-call plumbing, rendering a diff
+safely, an accept/reject flow that can't silently corrupt the buffer, BYOK
+key handling, and keeping up with more than one provider. None of that is
+specific to any one app or scripting engine, so `CDS.ScriptChat` builds it
+once and stays host-agnostic: a consuming app supplies only what's genuinely
+its own — how to read and write its script buffer, and how to answer "what
+does this symbol look like" against its own API surface.
 
 ## What it can do
 
 - **Ask questions** about the script open in the editor, with no code change
   implied — a plain text answer.
-- **Propose an edit** — shown inline as a diff, applied only when the user
-  clicks Accept. Never parsed out of a markdown code fence, never applied
-  silently.
+- **Propose an edit**, either as a full-script rewrite or as one or more
+  targeted find/replace patches for a small, localised change — the model
+  picks whichever fits. A patch's anchor text must match the script exactly;
+  if it doesn't (or matches more than once), the tool call fails closed and
+  the model retries with a better-scoped patch, rather than guessing at the
+  wrong occurrence. Either way, the result renders inline as a diff and is
+  applied only when the user clicks Accept — never parsed out of a markdown
+  code fence, never applied silently.
 - **Look up a real symbol** from your app's own API while reasoning about the
   script (`lookup_symbol`), so suggestions use APIs and signatures that
   actually exist instead of the model's best guess.
 - **Carry a multi-turn conversation**, where each accepted edit becomes the
   baseline for the next turn, and a rejected edit doesn't quietly poison the
-  model's memory of what the script currently looks like.
+  model's memory of what the script currently looks like. Only one proposal
+  is ever awaiting a decision at a time — sending another message is disabled
+  until the current one is accepted or rejected, so a proposal can't get
+  silently buried by later chat.
 - **Onboard a user's own API key** (BYOK) — provider/model choice, key entry,
   a "test connection" button, and per-user storage via Windows DPAPI.
+- **Drive more than one script from one panel**, via `ScriptChatHostPanel` —
+  a target selector plus a shared conversation surface, for a host with
+  several scripts open at once.
 
 ## Packages
 
@@ -108,35 +120,43 @@ still works.
 The full worked example — including a concrete `ISymbolLookupProvider` and a
 `scriptchat.context.md` orientation file — is in
 [`samples/CDS.ScriptChat.TestHost`](samples/CDS.ScriptChat.TestHost/); it's
-the fastest way to see every wiring point in one place.
+the fastest way to see every wiring point in one place. Launch it with
+`--demo=patch` or `--demo=markdown` to see a seeded conversation without a
+real API key — the same fixtures used to capture the screenshot above.
 
 ## How it works
 
 ```
-┌─────────────────────────┐
-│  Your host app           │  supplies: script get/set delegates,
-│  (Fable, Playground, …)  │  ISymbolLookupProvider, orientation blurb
-└────────────┬─────────────┘
-             │
-┌────────────▼─────────────┐
-│  CDS.ScriptChat.WinForms  │  ScriptChatPanel (transcript, diff/accept UI)
-│                           │  ScriptChatSettingsPanel (BYOK onboarding)
-│                           │  DpapiApiKeyStore
-└────────────┬─────────────┘
-             │
-┌────────────▼─────────────┐
-│  CDS.ScriptChat.Core      │  ScriptChatSession (conversation, tool calls)
-│                           │  ScriptChatClientFactory (Claude / OpenAI)
-│                           │  built on Microsoft.Extensions.AI.IChatClient
-└───────────────────────────┘
+┌────────────────────────────┐
+│  Your host app             │  supplies: script get/set delegates,
+│  (any editor, any engine)  │  ISymbolLookupProvider, orientation blurb
+└──┬─────────────────────────┘
+   │
+┌──▼─────────────────────────┐
+│  CDS.ScriptChat.WinForms   │  ScriptChatPanel (transcript, diff/accept UI)
+│                            │  ScriptChatSettingsPanel (BYOK onboarding)
+│                            │  DpapiApiKeyStore
+└──┬─────────────────────────┘
+   │
+┌──▼─────────────────────────┐
+│  CDS.ScriptChat.Core       │  ScriptChatSession (conversation, tool calls)
+│                            │  ScriptChatClientFactory (Claude / OpenAI)
+│                            │  built on Microsoft.Extensions.AI.IChatClient
+└────────────────────────────┘
 ```
 
 A few decisions worth knowing before you integrate:
 
 - **Edits are structured, not scraped.** Proposed code arrives via a
-  `propose_script_edit` tool call, rendered as a diff. The library never
-  parses code out of the model's free-text response, and never touches your
-  editor buffer until the user clicks Accept.
+  `propose_script_edit` (full rewrite) or `propose_script_patch` (anchored
+  find/replace hunks) tool call, rendered as a diff either way. The library
+  never parses code out of the model's free-text response, and never touches
+  your editor buffer until the user clicks Accept.
+- **A patch is re-applied at accept time, not proposal time.** Accepting a
+  patch reads your buffer fresh and re-anchors the hunks against it, so if
+  the user edited the buffer while the proposal sat pending, a hunk that no
+  longer matches fails with a clear message instead of silently overwriting
+  that edit.
 - **Nothing use-case-specific ships in the library.** No Roslyn, no
   Scintilla, no particular scripting engine — the script buffer is two
   delegates, and API knowledge is an interface you implement.
@@ -157,8 +177,10 @@ design record for this project and the best next read after this file.
 
 Milestones 1 and 2 are complete: single- and multi-turn conversations, Q&A,
 symbol lookup, diff/accept edits, and BYOK onboarding all work end to end
-against both Claude and OpenAI. Grok, mid-session provider switching,
-streaming responses, and multi-script hosts are deliberately deferred — see
+against both Claude and OpenAI. Since then, targeted patch edits
+(`propose_script_patch`) and a single continuously-scrolling transcript have
+shipped too (D18, D19). Grok, mid-session provider switching, streaming
+responses, and per-hunk accept/reject remain deliberately deferred — see
 "Future milestones" in the design doc.
 
 ## Building from source

@@ -12,9 +12,10 @@ internal static class Program
 
     /// <summary>Runs the test host.</summary>
     /// <param name="args">
-    /// Recognises one switch, <c>--demo=markdown</c>: seeds the transcript with a canned
-    /// Markdown-bearing turn (see <see cref="Demo.MarkdownDemo"/>) instead of requiring a
-    /// configured provider key, for UI-automation coverage against a real window.
+    /// Recognises two switches, either seeding the transcript instead of requiring a configured
+    /// provider key, for UI-automation coverage and screenshots against a real window:
+    /// <c>--demo=markdown</c> (see <see cref="Demo.MarkdownDemo"/>) seeds a canned Markdown-bearing
+    /// turn; <c>--demo=patch</c> (see <see cref="Demo.PatchDemo"/>) seeds a canned patch proposal.
     /// </param>
     [STAThread]
     private static void Main(string[] args)
@@ -43,6 +44,10 @@ internal static class Program
         if (Array.IndexOf(args, "--demo=markdown") >= 0)
         {
             mainForm.SeedMarkdownDemoAsync().GetAwaiter().GetResult();
+        }
+        else if (Array.IndexOf(args, "--demo=patch") >= 0)
+        {
+            mainForm.SeedPatchDemoAsync().GetAwaiter().GetResult();
         }
 
         Application.Run(mainForm);

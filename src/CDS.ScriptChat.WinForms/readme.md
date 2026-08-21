@@ -14,7 +14,9 @@ they are editing, and the assistant can propose edits to it.
 - `DpapiApiKeyStore` — per-user API key storage via Windows DPAPI. Swap in your
   own via `IApiKeyStore`.
 
-Proposed edits are shown as a diff and applied only when the user accepts.
+Proposed edits — a full rewrite or a targeted find/replace patch — are shown
+as a diff and applied only when the user accepts. Only one proposal is ever
+awaiting a decision at a time.
 
 **Bring your own key.** The key is stored per-user under DPAPI and is never
 logged or transmitted anywhere except the provider SDK call itself.

@@ -9,9 +9,15 @@ What it gives you:
 
 - `ScriptChatSession` — the conversation, including the script the assistant is
   reasoning about.
-- `ScriptEditProposal` / `ScriptDiff` — proposed edits arrive as structured tool
-  calls and are surfaced as a diff for the host to accept or reject. They are
-  never applied automatically and never parsed out of markdown fences.
+- `ScriptEditProposal` / `ScriptDiff` — a full-script rewrite, surfaced as a
+  diff for the host to accept or reject.
+- `ScriptEditHunk` / `ScriptPatchApplier` — a targeted find/replace patch: one
+  or more anchored old-text/new-text hunks, for a small, localised change
+  instead of rewriting the whole script. A hunk applies only if its anchor
+  matches the current script exactly once; otherwise it fails closed with a
+  clear reason rather than guessing.
+- Either way, proposals arrive as structured tool calls and are never applied
+  automatically or parsed out of markdown fences.
 - `ISymbolLookupProvider` — the hook by which a host exposes its own API surface
   to the assistant. The library ships only the interface.
 - `IScriptChatHostContext` — host-supplied description of the app the script
