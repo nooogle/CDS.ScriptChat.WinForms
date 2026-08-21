@@ -62,6 +62,80 @@ public sealed class ScriptChatSessionTests
     }
 
     [TestMethod]
+    public async Task SendAsync_ModelCallsProposeScriptPatch_CapturesProposalAsPendingReview()
+    {
+        var client = new FakeChatClient(
+            FakeChatClient.ToolCall("propose_script_patch", new Dictionary<string, object?>
+            {
+                ["hunks"] = new[]
+                {
+                    new Dictionary<string, object?> { ["oldText"] = "var x = 1;", ["newText"] = "var x = 2;" },
+                },
+                ["summary"] = "Bump x to 2",
+            }),
+            FakeChatClient.Text("I have bumped x to 2."));
+
+        var session = new ScriptChatSession(client);
+
+        var result = await session.SendAsync("Set x to 2", SampleScript);
+
+        result.ProposedEdit.Should().BeTrue();
+        result.Proposal.Should().BeNull();
+        result.PatchProposal!.Hunks.Should().ContainSingle()
+            .Which.Should().Be(new ScriptEditHunk("var x = 1;", "var x = 2;"));
+        result.PatchProposal.Summary.Should().Be("Bump x to 2");
+
+        var assistantTurn = session.Turns.Last();
+        assistantTurn.ProposedCode.Should().BeNull();
+        assistantTurn.ProposedHunks.Should().ContainSingle()
+            .Which.Should().Be(new ScriptEditHunk("var x = 1;", "var x = 2;"));
+        assistantTurn.Disposition.Should().Be(EditDisposition.PendingReview);
+    }
+
+    [TestMethod]
+    public async Task SendAsync_ModelCallsProposeScriptPatchWithNoHunks_RecordsNoPendingEdit()
+    {
+        var client = new FakeChatClient(
+            FakeChatClient.ToolCall("propose_script_patch", new Dictionary<string, object?>
+            {
+                ["hunks"] = Array.Empty<Dictionary<string, object?>>(),
+                ["summary"] = "Nothing to change",
+            }),
+            FakeChatClient.Text("Never mind, no change needed."));
+
+        var session = new ScriptChatSession(client);
+
+        var result = await session.SendAsync("Set x to 2", SampleScript);
+
+        result.ProposedEdit.Should().BeFalse();
+        session.Turns.Last().Disposition.Should().Be(EditDisposition.None);
+    }
+
+    [TestMethod]
+    public async Task SendAsync_ModelCallsProposeScriptPatchWithAnUnmatchedHunk_RecordsNoPendingEdit()
+    {
+        var client = new FakeChatClient(
+            FakeChatClient.ToolCall("propose_script_patch", new Dictionary<string, object?>
+            {
+                ["hunks"] = new[]
+                {
+                    new Dictionary<string, object?> { ["oldText"] = "var x = 99;", ["newText"] = "var x = 2;" },
+                },
+                ["summary"] = "Bump x to 2",
+            }),
+            FakeChatClient.Text("Let me look at the script again."));
+
+        var session = new ScriptChatSession(client);
+
+        var result = await session.SendAsync("Set x to 2", SampleScript);
+
+        // The hunk's old text is not in SampleScript, so the tool call is rejected rather than
+        // captured as a proposal — the model sees the rejection and can retry within the turn.
+        result.ProposedEdit.Should().BeFalse();
+        session.Turns.Last().Disposition.Should().Be(EditDisposition.None);
+    }
+
+    [TestMethod]
     public async Task SendAsync_ModelCallsLookupSymbol_ResolvesViaProviderAndRecordsIt()
     {
         var provider = new StubSymbolLookupProvider(new Dictionary<string, SymbolLookupResult>
@@ -120,7 +194,7 @@ public sealed class ScriptChatSessionTests
         await session.SendAsync("Hello", SampleScript);
 
         client.LastOptions!.Tools!.Select(t => t.Name)
-            .Should().BeEquivalentTo(["lookup_symbol", "propose_script_edit"]);
+            .Should().BeEquivalentTo(["lookup_symbol", "propose_script_edit", "propose_script_patch"]);
     }
 
     [TestMethod]
@@ -270,6 +344,54 @@ public sealed class ScriptChatSessionTests
 
         GetToolResultTexts(client.ReceivedRequests[2])
             .Should().ContainSingle(text => text!.Contains("rejected", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    public async Task SetEditDisposition_AcceptedOnPatchProposingTurn_UpdatesTheTurn()
+    {
+        var client = new FakeChatClient(
+            FakeChatClient.ToolCall("propose_script_patch", new Dictionary<string, object?>
+            {
+                ["hunks"] = new[]
+                {
+                    new Dictionary<string, object?> { ["oldText"] = "var x = 1;", ["newText"] = "var x = 2;" },
+                },
+                ["summary"] = "Bump x",
+            }),
+            FakeChatClient.Text("Done."));
+
+        var session = new ScriptChatSession(client);
+        await session.SendAsync("Set x to 2", SampleScript);
+
+        var turnIndex = session.Turns.Count - 1;
+        session.SetEditDisposition(turnIndex, EditDisposition.Accepted);
+
+        session.Turns[turnIndex].Disposition.Should().Be(EditDisposition.Accepted);
+    }
+
+    [TestMethod]
+    public async Task SetEditDisposition_AcceptedOnPatchProposal_RewritesTheFrozenToolResultForTheNextTurn()
+    {
+        var client = new FakeChatClient(
+            FakeChatClient.ToolCall("propose_script_patch", new Dictionary<string, object?>
+            {
+                ["hunks"] = new[]
+                {
+                    new Dictionary<string, object?> { ["oldText"] = "var x = 1;", ["newText"] = "var x = 2;" },
+                },
+                ["summary"] = "Bump x",
+            }),
+            FakeChatClient.Text("Done."),
+            FakeChatClient.Text("Sure, anything else?"));
+
+        var session = new ScriptChatSession(client);
+        await session.SendAsync("Set x to 2", SampleScript);
+
+        session.SetEditDisposition(session.Turns.Count - 1, EditDisposition.Accepted);
+        await session.SendAsync("Thanks", "var x = 2;");
+
+        GetToolResultTexts(client.ReceivedRequests[2])
+            .Should().ContainSingle(text => text!.Contains("accepted", StringComparison.OrdinalIgnoreCase));
     }
 
     private static IEnumerable<string?> GetToolResultTexts(IEnumerable<ChatMessage> messages) =>

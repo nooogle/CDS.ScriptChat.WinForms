@@ -348,6 +348,41 @@ public partial class ScriptChatPanel : UserControl
         {
             AppendProposalDiff(turn.ProposedCode, baselineScript);
         }
+        else if (turn.ProposedHunks is not null)
+        {
+            AppendProposalHunks(turn.ProposedHunks);
+        }
+    }
+
+    /// <summary>
+    /// Appends a patch proposal's hunks (Job 3) as an unparsed, monospaced block — each hunk's
+    /// old text shown as removed and its new text as added, in the order the hunks apply.
+    /// </summary>
+    private void AppendProposalHunks(IReadOnlyList<ScriptEditHunk> hunks)
+    {
+        // AppendPlainText never starts its own new paragraph the way AppendMarkdown does, so
+        // without this the first line would run straight on from the caption/prose above.
+        _transcriptTextBox.AppendPlainText(string.Empty);
+
+        for (var i = 0; i < hunks.Count; i++)
+        {
+            if (i > 0)
+            {
+                _transcriptTextBox.AppendPlainText(string.Empty);
+            }
+
+            var hunk = hunks[i];
+
+            foreach (var line in hunk.OldText.ReplaceLineEndings("\n").Split('\n'))
+            {
+                _transcriptTextBox.AppendPlainText("- " + line, s_removedBackColour);
+            }
+
+            foreach (var line in hunk.NewText.ReplaceLineEndings("\n").Split('\n'))
+            {
+                _transcriptTextBox.AppendPlainText("+ " + line, s_addedBackColour);
+            }
+        }
     }
 
     /// <summary>
@@ -427,20 +462,41 @@ public partial class ScriptChatPanel : UserControl
             return;
         }
 
-        // Models emit bare "\n". A plain WinForms TextBox only breaks lines on "\r\n", so the
-        // script would arrive in the editor as one long line. Normalise here rather than in
-        // every host's setter.
-        var script = turn.ProposedCode!.ReplaceLineEndings();
+        if (turn.ProposedHunks is not null && ScriptTextProvider is null)
+        {
+            // A patch applies against a fresh read of the buffer, not the frozen baseline used
+            // to render the diff — unlike a full-script replacement, it genuinely needs a source.
+            _logger.EditApplyHadNoSetter();
+            SetStatus("No script source is configured, so the patch could not be applied.");
+            return;
+        }
+
         var index = _pendingTurnIndex!.Value;
+        string script;
 
         try
         {
+            // A patch is re-applied to the buffer's current contents rather than the frozen
+            // baseline the diff was rendered against, so it fails cleanly here — same as
+            // Claude Code's Edit tool and Copilot's replace_string_in_file — if the buffer has
+            // changed since the proposal was made, instead of silently overwriting an edit the
+            // user made in the meantime.
+            script = turn.ProposedHunks is not null
+                ? ScriptPatchApplier.Apply(ScriptTextProvider!(), turn.ProposedHunks)
+                : turn.ProposedCode!;
+
+            // Models emit bare "\n". A plain WinForms TextBox only breaks lines on "\r\n", so the
+            // script would arrive in the editor as one long line. Normalise here rather than in
+            // every host's setter.
+            script = script.ReplaceLineEndings();
+
             ScriptTextSetter(script);
         }
         catch (Exception ex)
         {
-            // The host's setter failed, so the buffer is in an unknown state — leave the
-            // proposal pending rather than marking it accepted.
+            // The patch no longer applied, or the host's setter failed — either way the buffer
+            // is in an unknown or unchanged state, so leave the proposal pending rather than
+            // marking it accepted.
             _logger.EditApplyFailed(ex, index);
             SetStatus($"Could not apply the edit: {ex.Message}");
             return;
@@ -484,7 +540,7 @@ public partial class ScriptChatPanel : UserControl
         }
 
         var candidate = _session.Turns[index];
-        if (candidate.Disposition != EditDisposition.PendingReview || candidate.ProposedCode is null)
+        if (candidate.Disposition != EditDisposition.PendingReview || !candidate.HasProposedEdit)
         {
             return false;
         }

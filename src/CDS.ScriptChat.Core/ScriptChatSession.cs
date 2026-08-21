@@ -77,6 +77,24 @@ public sealed class ScriptChatSession
     private string? _capturedProposalCallId;
 
     /// <summary>
+    /// Set by the <c>propose_script_patch</c> tool during a turn, read once the turn completes.
+    /// Parallel to <see cref="_capturedProposal"/> — a turn proposes at most one kind of edit,
+    /// but which tool it called is not known until the response comes back, so both are tracked
+    /// independently rather than through one shared field.
+    /// </summary>
+    private ScriptPatchProposal? _capturedPatchProposal;
+
+    /// <summary>The <c>CallId</c> of the call that produced <see cref="_capturedPatchProposal"/>.</summary>
+    private string? _capturedPatchProposalCallId;
+
+    /// <summary>
+    /// The script <see cref="SendAsync"/> was called with for the turn in flight, so
+    /// <see cref="ProposeScriptPatch"/> can validate a hunk against what the model was actually
+    /// shown, without needing the caller to thread it through as a tool argument.
+    /// </summary>
+    private string _currentScript = string.Empty;
+
+    /// <summary>
     /// Initialises a session over an existing chat client.
     /// </summary>
     /// <param name="chatClient">
@@ -116,6 +134,7 @@ public sealed class ScriptChatSession
         [
             AIFunctionFactory.Create(LookupSymbolAsync, name: "lookup_symbol"),
             AIFunctionFactory.Create(ProposeScriptEdit, name: "propose_script_edit"),
+            AIFunctionFactory.Create(ProposeScriptPatch, name: "propose_script_patch"),
         ];
 
         _logger.SessionCreated(_tools.Count);
@@ -176,6 +195,9 @@ public sealed class ScriptChatSession
         {
             _capturedProposal = null;
             _capturedProposalCallId = null;
+            _capturedPatchProposal = null;
+            _capturedPatchProposalCallId = null;
+            _currentScript = currentScript;
             _symbolsLookedUp.Clear();
 
             if (_history.Count == 0)
@@ -201,31 +223,43 @@ public sealed class ScriptChatSession
 
             var text = string.IsNullOrWhiteSpace(response.Text) ? null : response.Text.Trim();
             var proposal = _capturedProposal;
-            var proposalResultContent = proposal is null
+
+            // The system prompt asks for at most one proposal tool per turn; if the model calls
+            // both anyway, the full-script replacement wins deterministically rather than either
+            // silently combining or picking whichever happened to run last.
+            var patchProposal = proposal is null ? _capturedPatchProposal : null;
+
+            var proposalCallId = proposal is not null ? _capturedProposalCallId
+                : patchProposal is not null ? _capturedPatchProposalCallId
+                : null;
+            var proposalResultContent = proposalCallId is null
                 ? null
-                : FindProposalResultContent(response.Messages, _capturedProposalCallId);
+                : FindProposalResultContent(response.Messages, proposalCallId);
+
+            var hasProposal = proposal is not null || patchProposal is not null;
 
             AddTurn(
                 new ChatTurn(
                     ChatTurnRole.Assistant,
                     text,
                     proposal?.ProposedCode,
-                    proposal?.Summary,
-                    proposal is null ? EditDisposition.None : EditDisposition.PendingReview),
+                    proposal?.Summary ?? patchProposal?.Summary,
+                    hasProposal ? EditDisposition.PendingReview : EditDisposition.None,
+                    patchProposal?.Hunks),
                 currentScript,
                 proposalResultContent);
 
             _logger.TurnCompleted(
                 turnIndex,
                 stopwatch.ElapsedMilliseconds,
-                proposal is not null,
+                hasProposal,
                 _symbolsLookedUp.Count,
                 response.Messages.Count,
                 response.FinishReason?.Value,
                 response.Usage?.InputTokenCount,
                 response.Usage?.OutputTokenCount);
 
-            return new AssistantTurnResult(text, proposal, [.. _symbolsLookedUp]);
+            return new AssistantTurnResult(text, proposal, [.. _symbolsLookedUp], patchProposal);
         }
         catch (OperationCanceledException)
         {
@@ -325,6 +359,9 @@ public sealed class ScriptChatSession
         _symbolsLookedUp.Clear();
         _capturedProposal = null;
         _capturedProposalCallId = null;
+        _capturedPatchProposal = null;
+        _capturedPatchProposalCallId = null;
+        _currentScript = string.Empty;
     }
 
     /// <summary>Appends a turn and the script it was sent against, keeping the two in step.</summary>
@@ -372,12 +409,18 @@ public sealed class ScriptChatSession
             changes to it.
 
             Rules:
-            - To change the script, call the propose_script_edit tool with the complete new
-              script. Never write the revised script into your prose reply, and never wrap it in
-              a markdown code fence expecting it to be applied — only a tool call reaches the
-              editor, and only after the user accepts it.
+            - To change the script, call one of propose_script_edit or propose_script_patch — at
+              most one, at most once per turn. Never write the revised script into your prose
+              reply, and never wrap it in a markdown code fence expecting it to be applied — only
+              a tool call reaches the editor, and only after the user accepts it.
+            - Prefer propose_script_patch for a small, localised change: each hunk's oldText must
+              match the current script exactly, including whitespace, and appear only once —
+              include enough surrounding context to make it unique. If a hunk does not apply, the
+              tool tells you why; re-read the script and try again rather than guessing.
+            - Use propose_script_edit instead for a large rewrite, where most of the script is
+              changing anyway.
             - If the user asks a question that implies no code change, just answer. Do not call
-              propose_script_edit.
+              either proposal tool.
             - Before relying on any API detail you are not certain of, call lookup_symbol. It
               is answered by this host application itself, so it is accurate where recall may
               not be. A "not found" answer means the symbol is not available here.
@@ -472,6 +515,43 @@ public sealed class ScriptChatSession
         // was last" by re-scanning response.Messages after the fact.
         _capturedProposal = new ScriptEditProposal(newScript, summary);
         _capturedProposalCallId = FunctionInvokingChatClient.CurrentContext?.CallContent.CallId;
+
+        return "Proposal recorded and shown to the user as a diff. It is not applied until they accept it.";
+    }
+
+    [Description(
+        "Propose one or more targeted find-and-replace changes to the script, instead of "
+        + "rewriting the whole thing. The user sees every hunk as a diff and must accept it "
+        + "before the editor changes. Call this at most once per turn.")]
+    private string ProposeScriptPatch(
+        [Description("The hunks to apply, in order. Each is an exact old-text/new-text pair.")]
+        IReadOnlyList<ScriptEditHunk> hunks,
+        [Description("A one-line summary of what this change does.")]
+        string summary)
+    {
+        if (hunks.Count == 0)
+        {
+            return "No hunks were supplied. Call this tool with at least one hunk, "
+                + "or use propose_script_edit for a full rewrite.";
+        }
+
+        try
+        {
+            // Discarded — this call only validates that every hunk applies to the script the
+            // model was actually shown. The buffer is re-read and patched again at accept time,
+            // since it may have changed in the meantime (Job 3).
+            _ = ScriptPatchApplier.Apply(_currentScript, hunks);
+        }
+        catch (ScriptPatchApplyException ex)
+        {
+            _logger.PatchProposalRejected(ex.HunkIndex, ex.HunkCount);
+            return $"This patch could not be applied: {ex.Message} Re-read the script and try again with corrected hunks.";
+        }
+
+        _logger.PatchProposed(hunks.Count, summary.Length, _capturedPatchProposal is not null);
+
+        _capturedPatchProposal = new ScriptPatchProposal(hunks, summary);
+        _capturedPatchProposalCallId = FunctionInvokingChatClient.CurrentContext?.CallContent.CallId;
 
         return "Proposal recorded and shown to the user as a diff. It is not applied until they accept it.";
     }
