@@ -544,7 +544,7 @@ public sealed class ScriptChatSession
         }
         catch (ScriptPatchApplyException ex)
         {
-            _logger.PatchProposalRejected(ex.HunkIndex, ex.HunkCount);
+            _logger.PatchProposalRejected(ex.HunkIndex + 1, ex.HunkCount);
             return $"This patch could not be applied: {ex.Message} Re-read the script and try again with corrected hunks.";
         }
 

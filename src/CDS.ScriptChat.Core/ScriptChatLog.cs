@@ -168,8 +168,8 @@ internal static partial class ScriptChatLog
         EventId = 1035,
         EventName = "PatchProposalRejected",
         Level = LogLevel.Information,
-        Message = "propose_script_patch call {HunkIndex} of {HunkCount} did not apply to the current script and was rejected.")]
-    public static partial void PatchProposalRejected(this ILogger logger, int hunkIndex, int hunkCount);
+        Message = "propose_script_patch rejected: hunk {HunkNumber} of {HunkCount} did not apply to the current script.")]
+    public static partial void PatchProposalRejected(this ILogger logger, int hunkNumber, int hunkCount);
 
     [LoggerMessage(
         EventId = 1040,
