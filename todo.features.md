@@ -116,6 +116,29 @@ drift).
 
 ---
 
+## Known issues (small, not full jobs — tracked so they don't get lost)
+
+- [ ] **`InputBoxScrollTests.MouseWheel_OverAnOverflowingInputBox_ScrollsIt` is
+  flaky.** Drives the real OS mouse cursor and compares pixel bitmaps
+  before/after a scroll; sensitive to the host machine's pointer
+  precision/acceleration settings and to whatever else has focus at the
+  moment it runs. Already documented as such in its own file and
+  deliberately not part of the CI-required check — a local failure is a
+  prompt to re-verify by hand, not a release blocker. Consider replacing the
+  bitmap-diff assertion with something that reads the actual scroll position
+  (e.g. via a UIA value/scroll pattern) instead of comparing screenshots, if
+  it keeps being noisy enough to be worth the effort.
+- [ ] **The `--demo=markdown` table renders badly at the chat panel's default
+  width.** `MarkdownTextBox`'s "best-effort monospaced grid" table technique
+  (`CDS.Markdown.Lite`) doesn't fit typical column content within a
+  narrow panel — columns wrap mid-cell rather than staying aligned. Currently
+  worked around by using `--demo=patch` for the README screenshot instead
+  and noting the limitation in `assets/readme.md`, not fixed. Options if it's
+  worth revisiting: a host-width-aware column layout in the table renderer
+  (upstream, in `CDS.Markdown.Lite`), or falling back to a non-tabular
+  (key/value list) rendering for tables past some column-count/width
+  threshold.
+
 ## Notes
 
 - None of these three jobs block each other, but Job 1 and Job 2 both touch
