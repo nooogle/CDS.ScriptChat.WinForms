@@ -8,7 +8,8 @@ namespace CDS.ScriptChat.WinForms.Tests;
 
 /// <summary>
 /// Covers the milestone-1 acceptance criterion that a proposed edit leaves the script alone
-/// until the user clicks Accept (D5).
+/// until the user clicks Accept (D5), plus the single-pending-proposal invariant the permanent
+/// decision bar depends on: at most one proposal is ever awaiting review at a time.
 /// </summary>
 [TestClass]
 [TestCategory("EditAcceptance")]
@@ -154,19 +155,52 @@ public sealed class EditAcceptanceTests
     }
 
     [TestMethod]
-    public async Task TextOnlyTurn_Always_OffersNoAcceptOrReject()
+    public async Task TextOnlyTurn_Always_LeavesTheDecisionBarDisabled()
     {
         using var harness = await ProposingPanelHarness.CreateAsync(proposeEdit: false);
 
-        harness.FindActionsPanel().Visible.Should().BeFalse();
+        harness.AcceptButton.Enabled.Should().BeFalse();
+        harness.RejectButton.Enabled.Should().BeFalse();
     }
 
     [TestMethod]
-    public async Task ProposedEdit_PendingReview_ShowsAcceptAndReject()
+    public async Task ProposedEdit_PendingReview_EnablesTheDecisionBar()
     {
         using var harness = await ProposingPanelHarness.CreateAsync();
 
-        harness.FindActionsPanel().Visible.Should().BeTrue();
+        harness.AcceptButton.Enabled.Should().BeTrue();
+        harness.RejectButton.Enabled.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public async Task ProposedEdit_PendingReview_DisablesSendingAnotherTurn()
+    {
+        // D5's decision bar only ever tracks one proposal, so a second one must not be reachable
+        // until the first is decided — the panel disables Send while one is outstanding.
+        using var harness = await ProposingPanelHarness.CreateAsync();
+
+        harness.Panel.IsReady.Should().BeTrue();
+        harness.SendButton.Enabled.Should().BeFalse();
+    }
+
+    [TestMethod]
+    public async Task Accept_Clicked_ReEnablesSendingAnotherTurn()
+    {
+        using var harness = await ProposingPanelHarness.CreateAsync();
+
+        harness.ClickAccept();
+
+        harness.SendButton.Enabled.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public async Task Reject_Clicked_ReEnablesSendingAnotherTurn()
+    {
+        using var harness = await ProposingPanelHarness.CreateAsync();
+
+        harness.ClickReject();
+
+        harness.SendButton.Enabled.Should().BeTrue();
     }
 
     /// <summary>
@@ -188,6 +222,12 @@ public sealed class EditAcceptanceTests
         public string CurrentScript { get; private set; } = OriginalScript;
 
         public int SetterCallCount { get; private set; }
+
+        public Button AcceptButton => FindButton("_acceptButton");
+
+        public Button RejectButton => FindButton("_rejectButton");
+
+        public Button SendButton => FindButton("_sendButton");
 
         public static async Task<ProposingPanelHarness> CreateAsync(
             bool proposeEdit = true,
@@ -228,42 +268,21 @@ public sealed class EditAcceptanceTests
 
             panel.AttachSession(session);
 
-            // Drive a real turn through the session so the panel binds genuine turn state.
+            // Drive a real turn through the session so the panel binds genuine turn state,
+            // baseline included.
             await session.SendAsync("Set x to 2", harness.CurrentScript);
             panel.AttachSession(session);
-            harness.RebindLastTurnWithBaseline();
 
             return harness;
         }
 
-        public void ClickAccept() => FindButton("_acceptButton").PerformClick();
+        public void ClickAccept() => AcceptButton.PerformClick();
 
-        public void ClickReject() => FindButton("_rejectButton").PerformClick();
-
-        public FlowLayoutPanel FindActionsPanel() =>
-            LastTurnView().Controls.Find("_actionsPanel", searchAllChildren: true)
-                .OfType<FlowLayoutPanel>().Single();
+        public void ClickReject() => RejectButton.PerformClick();
 
         public void Dispose() => Panel.Dispose();
 
-        /// <summary>
-        /// <see cref="ScriptChatPanel.AttachSession"/> restores turns without a baseline, which
-        /// is faithful to the real restore path but skips diff rendering. Re-binding with the
-        /// original script exercises the diff path the live send uses.
-        /// </summary>
-        private void RebindLastTurnWithBaseline()
-        {
-            LastTurnView().Bind(Session.Turns[^1], OriginalScript);
-        }
-
-        private ChatTurnView LastTurnView()
-        {
-            var transcript = Panel.Controls.Find("_transcriptPanel", searchAllChildren: true)
-                .OfType<FlowLayoutPanel>().Single();
-            return transcript.Controls.OfType<ChatTurnView>().Last();
-        }
-
         private Button FindButton(string name) =>
-            LastTurnView().Controls.Find(name, searchAllChildren: true).OfType<Button>().Single();
+            Panel.Controls.Find(name, searchAllChildren: true).OfType<Button>().Single();
     }
 }

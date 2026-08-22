@@ -16,7 +16,7 @@
 		<PackageReference Include="MSTest" Version="4.3.3" />
 		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
 		<PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.3.3" />
-		<PackageReference Include="AwesomeAssertions" Version="9.5.0" />
+		<PackageReference Include="AwesomeAssertions" Version="9.6.0" />
 		<!-- Drives the real TestHost.exe out-of-process via UI Automation, so these tests see
 		     exactly what a user sees — actual painted controls in a real message loop — rather
 		     than the in-process control geometry the MSTest suite already covers. -->

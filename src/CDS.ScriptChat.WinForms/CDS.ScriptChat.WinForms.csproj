@@ -31,7 +31,7 @@
 		<!-- MarkdownTextBox for turn rendering — the official, upstream version of the control
 		     this project built locally. Depends on Markdig only; no WebView2, no host process, no
 		     network access, no file I/O of its own. -->
-		<PackageReference Include="CDS.Markdown.Lite" Version="1.5.4" />
+		<PackageReference Include="CDS.Markdown.Lite" Version="1.5.5" />
 	</ItemGroup>
 
 	<ItemGroup>

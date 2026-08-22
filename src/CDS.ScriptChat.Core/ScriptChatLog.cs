@@ -148,10 +148,28 @@ internal static partial class ScriptChatLog
         EventId = 1033,
         EventName = "EditDispositionReconciliationMissed",
         Level = LogLevel.Warning,
-        Message = "Turn {TurnIndex} proposed an edit but no matching propose_script_edit tool-result "
-            + "was found to reconcile — the model's history still says the edit is undecided even "
-            + "though the user just accepted or rejected it.")]
+        Message = "Turn {TurnIndex} proposed an edit but no matching proposal tool-result was found "
+            + "to reconcile — the model's history still says the edit is undecided even though the "
+            + "user just accepted or rejected it.")]
     public static partial void EditDispositionReconciliationMissed(this ILogger logger, int turnIndex);
+
+    [LoggerMessage(
+        EventId = 1034,
+        EventName = "PatchProposed",
+        Level = LogLevel.Information,
+        Message = "propose_script_patch called. Hunks={HunkCount} SummaryLength={SummaryLength} ReplacesEarlierProposal={ReplacesEarlierProposal}")]
+    public static partial void PatchProposed(
+        this ILogger logger,
+        int hunkCount,
+        int summaryLength,
+        bool replacesEarlierProposal);
+
+    [LoggerMessage(
+        EventId = 1035,
+        EventName = "PatchProposalRejected",
+        Level = LogLevel.Information,
+        Message = "propose_script_patch rejected: hunk {HunkNumber} of {HunkCount} did not apply to the current script.")]
+    public static partial void PatchProposalRejected(this ILogger logger, int hunkNumber, int hunkCount);
 
     [LoggerMessage(
         EventId = 1040,

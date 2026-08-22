@@ -24,10 +24,17 @@ Original HTML form as supplied by Flaticon:
 
 If the icon is ever replaced, remove the attribution along with it.
 
-## screenshot-test-host.png
+## screenshot-diff-review.png
 
 Screenshot of `samples/CDS.ScriptChat.TestHost` at its default window size,
-used in the root `README.md`. Captured with no live conversation in progress
-(the transcript and `lookup_symbol` panes are empty) so it doesn't show any
-real prompt or response content. Re-capture if the test host's layout changes
-enough to make this stale.
+used in the root `README.md`. Captured via `--demo=patch` (see
+`Demo/PatchDemo.cs`), which seeds one canned turn proposing a one-line
+find/replace patch against the starter script — no real prompt or response
+content, no provider key needed. Shows the transcript, the rendered diff, and
+the Accept/Reject bar enabled.
+
+`--demo=markdown` (`Demo/MarkdownDemo.cs`) is the other seeded fixture, used
+by `MarkdownTurnRenderingTests` — it renders prose and a table but wraps
+awkwardly at this window's default width, so it wasn't used for the README
+screenshot. Re-capture `screenshot-diff-review.png` if the test host's layout
+changes enough to make it stale.

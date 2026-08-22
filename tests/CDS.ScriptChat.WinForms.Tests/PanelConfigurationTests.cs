@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 
+using CDS.Markdown;
 using CDS.ScriptChat.Core;
 using CDS.ScriptChat.Core.Tests;
 using CDS.ScriptChat.WinForms;
@@ -89,7 +90,7 @@ public sealed class PanelConfigurationTests
         panel.Configure(ClaudeOptions with { ModelId = "claude-sonnet-5" });
 
         // History is not carried across a provider or model change (D10).
-        FindTranscript(panel).Controls.Count.Should().Be(0);
+        FindTranscript(panel).TextLength.Should().Be(0);
     }
 
     [TestMethod]
@@ -121,12 +122,9 @@ public sealed class PanelConfigurationTests
 
         // The baseline travels with the session, so a reloaded transcript still shows what
         // changed rather than just the whole proposed script.
-        var diffBox = FindTranscript(panel).Controls.OfType<ChatTurnView>().Last()
-            .Controls.Find("_diffTextBox", searchAllChildren: true).OfType<RichTextBox>().Single();
-
-        diffBox.Lines.Should().Contain("  one").And.Contain("+ two");
+        FindTranscript(panel).Lines.Should().Contain("  one").And.Contain("+ two");
     }
 
-    private static FlowLayoutPanel FindTranscript(ScriptChatPanel panel) =>
-        panel.Controls.Find("_transcriptPanel", searchAllChildren: true).OfType<FlowLayoutPanel>().Single();
+    private static MarkdownTextBox FindTranscript(ScriptChatPanel panel) =>
+        panel.Controls.Find("_transcriptTextBox", searchAllChildren: true).OfType<MarkdownTextBox>().Single();
 }

@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 
+using CDS.Markdown;
 using CDS.ScriptChat.Core;
 using CDS.ScriptChat.WinForms;
 
@@ -68,7 +69,7 @@ public sealed class DesignerSmokeTests
         panel.AttachSession(session);
 
         // A fresh session has no turns, so the transcript starts empty.
-        FindTranscript(panel).Controls.Count.Should().Be(0);
+        FindTranscript(panel).TextLength.Should().Be(0);
     }
 
     [TestMethod]
@@ -78,90 +79,7 @@ public sealed class DesignerSmokeTests
 
         panel.ClearTranscript();
 
-        FindTranscript(panel).Controls.Count.Should().Be(0);
-    }
-
-    [TestMethod]
-    public void ChatTurnView_UserTurn_BindsWithoutThrowing()
-    {
-        using var view = new ChatTurnView();
-
-        var act = () => view.Bind(new ChatTurn(ChatTurnRole.User, "Add denoising", null, null, EditDisposition.None));
-
-        act.Should().NotThrow();
-    }
-
-    [TestMethod]
-    public void ChatTurnView_AssistantTurnProposingAnEdit_BindsWithoutThrowing()
-    {
-        using var view = new ChatTurnView();
-
-        var act = () => view.Bind(new ChatTurn(
-            ChatTurnRole.Assistant,
-            "I have added a denoising step.",
-            "var denoised = Denoise(src);",
-            "Add denoising",
-            EditDisposition.PendingReview));
-
-        act.Should().NotThrow();
-    }
-
-    [TestMethod]
-    public void ChatTurnView_ProposalWithNoBaseline_ShowsTheProposedCodeInFull()
-    {
-        using var view = new ChatTurnView();
-
-        view.Bind(
-            new ChatTurn(ChatTurnRole.Assistant, null, "line one\nline two", "Two lines", EditDisposition.PendingReview),
-            baselineScript: null);
-
-        var diffBox = FindDiffTextBox(view);
-        diffBox.Lines.Should().Equal("line one", "line two");
-        diffBox.Visible.Should().BeTrue();
-    }
-
-    [TestMethod]
-    public void ChatTurnView_ProposalWithBaseline_RendersMarkedUpDiffLines()
-    {
-        using var view = new ChatTurnView();
-
-        view.Bind(
-            new ChatTurn(ChatTurnRole.Assistant, null, "one\ntwo", "Add a line", EditDisposition.PendingReview),
-            baselineScript: "one");
-
-        FindDiffTextBox(view).Lines.Should().Contain("  one").And.Contain("+ two");
-    }
-
-    [TestMethod]
-    public void ChatTurnView_ProposalIdenticalToTheCurrentScript_SaysSoRatherThanShowingAnEmptyDiff()
-    {
-        using var view = new ChatTurnView();
-
-        view.Bind(
-            new ChatTurn(ChatTurnRole.Assistant, null, "one", "No-op", EditDisposition.PendingReview),
-            baselineScript: "one");
-
-        FindDiffTextBox(view).Text.Should().Contain("identical");
-    }
-
-    [TestMethod]
-    public void ChatTurnView_TurnWithNoProposedCode_HidesTheDiffBox()
-    {
-        using var view = new ChatTurnView();
-
-        view.Bind(new ChatTurn(ChatTurnRole.Assistant, "Just an answer.", null, null, EditDisposition.None));
-
-        FindDiffTextBox(view).Visible.Should().BeFalse();
-    }
-
-    [TestMethod]
-    public void ChatTurnView_NullTurn_Throws()
-    {
-        using var view = new ChatTurnView();
-
-        var act = () => view.Bind(null!);
-
-        act.Should().Throw<ArgumentNullException>();
+        FindTranscript(panel).TextLength.Should().Be(0);
     }
 
     [TestMethod]
@@ -183,11 +101,8 @@ public sealed class DesignerSmokeTests
         form.KeyStore.Should().BeSameAs(store);
     }
 
-    private static FlowLayoutPanel FindTranscript(ScriptChatPanel panel) =>
-        panel.Controls.Find("_transcriptPanel", searchAllChildren: true).OfType<FlowLayoutPanel>().Single();
-
-    private static RichTextBox FindDiffTextBox(ChatTurnView view) =>
-        view.Controls.Find("_diffTextBox", searchAllChildren: true).OfType<RichTextBox>().Single();
+    private static MarkdownTextBox FindTranscript(ScriptChatPanel panel) =>
+        panel.Controls.Find("_transcriptTextBox", searchAllChildren: true).OfType<MarkdownTextBox>().Single();
 
     private sealed class StubApiKeyStore : IApiKeyStore
     {

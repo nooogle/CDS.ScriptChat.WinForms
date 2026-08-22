@@ -33,16 +33,19 @@ public class SendConfirmationTests
             {
                 var inputBox = window!.FindFirstDescendant(cf => cf.ByAutomationId("_inputTextBox"));
                 inputBox.Should().NotBeNull();
+                var transcript = window.FindFirstDescendant(cf => cf.ByAutomationId("_transcriptTextBox"));
+                transcript.Should().NotBeNull();
 
-                var turnCountBefore = window.FindAllDescendants(cf => cf.ByAutomationId("_messageLabel")).Length;
+                var textBefore = GetTranscriptText(transcript!);
 
                 inputBox!.Focus();
                 Keyboard.Type("one more question");
                 Keyboard.Press(VirtualKeyShort.ENTER);
                 Thread.Sleep(1000);
 
-                var turnCountAfter = window.FindAllDescendants(cf => cf.ByAutomationId("_messageLabel")).Length;
-                turnCountAfter.Should().Be(turnCountBefore + 2, "a bare Enter should send, adding a user turn and an assistant reply");
+                var textAfter = GetTranscriptText(transcript!);
+                textAfter.Should().Contain("one more question", "a bare Enter should send, appending the typed message to the transcript");
+                textAfter.Length.Should().BeGreaterThan(textBefore.Length, "the assistant's reply should also have been appended");
                 automation.FocusedElement().Properties.AutomationId.Value.Should().Be(
                     "_inputTextBox", "focus should return to the input box once the turn completes");
             }
@@ -68,8 +71,10 @@ public class SendConfirmationTests
             {
                 var inputBox = window!.FindFirstDescendant(cf => cf.ByAutomationId("_inputTextBox"));
                 inputBox.Should().NotBeNull();
+                var transcript = window.FindFirstDescendant(cf => cf.ByAutomationId("_transcriptTextBox"));
+                transcript.Should().NotBeNull();
 
-                var turnCountBefore = window.FindAllDescendants(cf => cf.ByAutomationId("_messageLabel")).Length;
+                var textBefore = GetTranscriptText(transcript!);
 
                 inputBox!.Focus();
                 Keyboard.Type("line one");
@@ -77,8 +82,7 @@ public class SendConfirmationTests
                 Keyboard.Type("line two");
                 Thread.Sleep(300);
 
-                var turnCountAfter = window.FindAllDescendants(cf => cf.ByAutomationId("_messageLabel")).Length;
-                turnCountAfter.Should().Be(turnCountBefore, "Ctrl+Enter should insert a newline, not send");
+                GetTranscriptText(transcript!).Should().Be(textBefore, "Ctrl+Enter should insert a newline, not send");
 
                 var text = inputBox.Patterns.Value.PatternOrDefault?.Value.ValueOrDefault;
                 text.Should().Contain("line one").And.Contain("line two");
@@ -105,8 +109,10 @@ public class SendConfirmationTests
             {
                 var inputBox = window!.FindFirstDescendant(cf => cf.ByAutomationId("_inputTextBox"));
                 inputBox.Should().NotBeNull();
+                var transcript = window.FindFirstDescendant(cf => cf.ByAutomationId("_transcriptTextBox"));
+                transcript.Should().NotBeNull();
 
-                var turnCountBefore = window.FindAllDescendants(cf => cf.ByAutomationId("_messageLabel")).Length;
+                var textBefore = GetTranscriptText(transcript!);
 
                 inputBox!.Focus();
                 Keyboard.Type("line one");
@@ -114,8 +120,7 @@ public class SendConfirmationTests
                 Keyboard.Type("line two");
                 Thread.Sleep(300);
 
-                var turnCountAfter = window.FindAllDescendants(cf => cf.ByAutomationId("_messageLabel")).Length;
-                turnCountAfter.Should().Be(turnCountBefore, "Shift+Enter should insert a newline, not send");
+                GetTranscriptText(transcript!).Should().Be(textBefore, "Shift+Enter should insert a newline, not send");
 
                 var text = inputBox.Patterns.Value.PatternOrDefault?.Value.ValueOrDefault;
                 text.Should().Contain("line one").And.Contain("line two");
@@ -126,4 +131,7 @@ public class SendConfirmationTests
             }
         });
     }
+
+    private static string GetTranscriptText(FlaUI.Core.AutomationElements.AutomationElement transcript) =>
+        transcript.Patterns.Value.PatternOrDefault?.Value.ValueOrDefault ?? string.Empty;
 }

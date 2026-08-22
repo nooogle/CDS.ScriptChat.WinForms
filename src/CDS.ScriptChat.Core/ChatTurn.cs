@@ -13,13 +13,20 @@ namespace CDS.ScriptChat.Core;
 /// </param>
 /// <param name="EditSummary">A short description of the proposed edit, when one was proposed.</param>
 /// <param name="Disposition">Whether a proposed edit is pending, accepted, or rejected.</param>
+/// <param name="ProposedHunks">
+/// The find-and-replace hunks proposed by this turn via <c>propose_script_patch</c> (Job 3), or
+/// <see langword="null"/> when this turn proposed no edit or proposed a full-script replacement
+/// instead. Mutually exclusive with <paramref name="ProposedCode"/> — a turn proposes at most one
+/// kind of edit.
+/// </param>
 public sealed record ChatTurn(
     ChatTurnRole Role,
     string? Text,
     string? ProposedCode,
     string? EditSummary,
-    EditDisposition Disposition)
+    EditDisposition Disposition,
+    IReadOnlyList<ScriptEditHunk>? ProposedHunks = null)
 {
     /// <summary>Gets a value indicating whether this turn carries a proposed code edit.</summary>
-    public bool HasProposedEdit => ProposedCode is not null;
+    public bool HasProposedEdit => ProposedCode is not null || ProposedHunks is not null;
 }

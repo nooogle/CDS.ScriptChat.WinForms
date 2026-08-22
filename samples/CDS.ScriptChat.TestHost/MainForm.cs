@@ -123,6 +123,14 @@ public partial class MainForm : Form
     /// </summary>
     internal Task SeedMarkdownDemoAsync() => Demo.MarkdownDemo.SeedAsync(_chatPanel, _scriptTextBox.Text);
 
+    /// <summary>
+    /// Seeds the transcript with one canned patch-proposing turn via <see cref="Demo.PatchDemo"/>,
+    /// bypassing the settings panel entirely — no provider key needed. Used only by the
+    /// <c>--demo=patch</c> launch switch, for UI-automation coverage and screenshots of the
+    /// diff/accept UI against a real, painted window.
+    /// </summary>
+    internal Task SeedPatchDemoAsync() => Demo.PatchDemo.SeedAsync(_chatPanel, _scriptTextBox.Text);
+
     private void OnConfigurationApplied(object? sender, ScriptChatConfigurationEventArgs e)
     {
         // Reads scriptchat.context.md from the output directory; falls back to a host-supplied
