@@ -17,6 +17,39 @@ and Fable.
 
 ## Status
 
+- **Scope was narrowed on 2026-08-24 (D21): C# script chat, nothing else.**
+  Planning had drifted toward a general in-app assistant — chat with no script,
+  settings query and mutation, MCP transports, data review. Each step was
+  defensible and the sum was not. Jobs 6 and 7 in `todo.features.md` are parked
+  with their reasoning intact. **Read D21 and D22 before reopening any of it.**
+- **Job 5 — the adoption path** — **complete** (2026-08-24). 129 Core + 124
+  WinForms tests, solution builds clean. Adopting the library went from ~473 lines
+  of adapter and wiring in the first consuming app (plus ~636 lines of Roslyn
+  tooling it had to build first) to **two calls**:
+  `ScriptChatHostPanel.AddScript(name, read, write, api)` and
+  `UseStoredKey(applicationName)`. What landed:
+  - **D20** — a tool is offered to the model only when this host can answer it.
+    `lookup_symbol` was advertised even against `NullSymbolLookupProvider`, so the
+    model called it, heard "not found" every time, and concluded the host's API
+    was not real.
+  - **D22** — Roslyn ships in Core, superseding D15 for symbol lookup:
+    `RoslynSymbolResolver`, `RoslynSymbolLookupProvider`, `MetadataCompilation`,
+    `HostApiIndex`, and `ScriptChatSessionOptions.ForHostApi`.
+    `ISymbolLookupProvider` stays public for a host with its own engine.
+  - **D23** — `ScriptChatHostPanel` is the control an adopter drops in;
+    `ScriptChatPanel` is the inner one. One `Type` drives both the orientation
+    index and `lookup_symbol`, and wiring order no longer matters.
+  - `samples/CDS.ScriptChat.SampleApp` is the worked example and the acceptance
+    test — an ordinary app, not a diagnostic harness.
+  - **Proved against a real adopter** (2026-08-24): the OpenCvSharp Playground
+    and its use-cases demo are migrated onto the new API, 213 net lines lighter,
+    launched and confirmed with a live client and both conversations created.
+    It found one API defect, now fixed — the status line's
+    `Ready · {provider} · {model}` was a one-off write that the next
+    `AttachSession` replaced with a plain `Ready.`, so the provider vanished on
+    every target switch and at the end of every turn, and `ScriptChatHostPanel`
+    never showed it at all. `ScriptChatPanel.ReadyStatus` replaces the one-off
+    write. Findings in `todo.features.md` → "Start here".
 - **Milestone 1** (UC1, UC3, UC4, UC6) — **complete**. All build-order steps 1–6
   done, acceptance criteria met, tests passing. Packages published as `1.0.0`
   (see `todo.packaging.md`).
@@ -85,7 +118,8 @@ Three pieces, split so that no AI/SDK dependency ever leans on WinForms, no
 WinForms dependency ever leans on a specific AI provider, and nothing in the
 library leans on any particular host app's scripting stack (D15):
 
-**1. `CDS.ScriptChat.Core`** (no WinForms, no Roslyn, no editor)
+**1. `CDS.ScriptChat.Core`** (no WinForms, no editor; Roslyn since D22, for
+symbol lookup only)
 - `ScriptChatSession` — holds conversation state, sends turns, interprets results.
   Built on `Microsoft.Extensions.AI.IChatClient`, provider-agnostic.
 - `ScriptChatClientFactory` — the only place that knows Claude/OpenAI/Grok exist.
@@ -125,11 +159,14 @@ lookup_symbol(symbolName: string, containingType: string?) -> {
 ```
 
 **The library does not implement this — the host app does** (D15). `CDS.ScriptChat`
-defines `ISymbolLookupProvider`, exposes it to the model as the `lookup_symbol`
-tool, and ships a no-op implementation so the tool-calling path works before a
-host wires anything up. Where the answers come from is entirely the host's
-choice: a Roslyn `SemanticModel`, a reflection pass over loaded assemblies, a
-hand-maintained table, or a remote service.
+defines `ISymbolLookupProvider` and exposes it to the model as the
+`lookup_symbol` tool. Since D22 it also ships a working implementation —
+`RoslynSymbolLookupProvider` over the host's own assemblies, reachable in one
+call via `ScriptChatSessionOptions.ForHostApi(typeof(MyGlobals))`. A host with
+its own engine still implements the interface instead: a live editor
+`SemanticModel`, a reflection pass, a hand-maintained table, or a remote service.
+`NullSymbolLookupProvider` remains the default, and since D20 it means "there is
+no lookup here" — the tool is not advertised to the model at all.
 
 Returning `null` is an ordinary outcome meaning "not found", not an error.
 
@@ -169,11 +206,15 @@ app can use whichever fits its own project layout better.
 | D12 | Host-app orientation context supports two sources: a text/YAML file (checked first, if present) or a host-supplied property/delegate as fallback (e.g. `IHostContext.OrientationBlurb`). Either produces the same short string for the system prompt — a host app isn't forced into a file if a property is more natural for it. |
 | D13 | Diff granularity is full-script replacement in v1, matching the typical size of scripts in these apps. Line-level diffs are an explicit future milestone, not a v1 concern (see Future Milestones below). *(Superseded by D19: full-script replacement stays as the fallback for large rewrites, but is no longer the only granularity — `propose_script_patch` adds targeted hunks alongside it.)* |
 | D14 | Every UI component (panel, settings sub-panel, any dialog) is built as a standard WinForms Designer class — `.cs` / `.Designer.cs` / `.resx` triplet, `InitializeComponent()`, no hand-rolled layout-in-code, no third-party designer-incompatible UI framework. Must open and edit cleanly in the VS 2026 WinForms Designer. Adding transcript items to a container at runtime is data binding, not layout, and is not covered by this rule. |
-| D15 | **Nothing use-case-specific ships in the library.** No Roslyn, no CDS.CSharpScripting2, no Scintilla, no OpenCvSharp — no dependency that presumes a particular host app, scripting engine, or editor control. Symbol lookup is an interface the host implements (`ISymbolLookupProvider`); the script buffer is reached through host-supplied delegates. The library ships a no-op symbol provider so the tool-calling path works out of the box, and the test host app carries the worked example of a real one. Supersedes the `CDS.ScriptChat.Roslyn` project in the original architecture and the Scintilla dependency in D7. |
+| D15 | **Nothing use-case-specific ships in the library.** No Roslyn, no CDS.CSharpScripting2, no Scintilla, no OpenCvSharp — no dependency that presumes a particular host app, scripting engine, or editor control. Symbol lookup is an interface the host implements (`ISymbolLookupProvider`); the script buffer is reached through host-supplied delegates. The library ships a no-op symbol provider so the tool-calling path works out of the box, and the test host app carries the worked example of a real one. Supersedes the `CDS.ScriptChat.Roslyn` project in the original architecture and the Scintilla dependency in D7. *(Superseded in part by D22: Roslyn now ships in Core, because "define the abstraction, never implement it" was measured to cost every adopter 500+ lines of identical code. The rest of D15 — no CDS.CSharpScripting2, no Scintilla, no OpenCvSharp, host-supplied script delegates — still holds.)* |
 | D16 | **Logging is standard `Microsoft.Extensions.Logging` throughout, and carries structure only, never content.** Every component takes an `ILoggerFactory` (not a bare `ILogger`), so the whole `Microsoft.Extensions.AI` pipeline — function invocation and the provider round-trips — is instrumented from one property. Every message, at every level, carries only structure — names, lengths, counts, timings, event IDs, exceptions. No message anywhere logs prompt text, response text, proposed scripts, edit summaries, symbol signatures, or the orientation blurb. API keys appear at no level at all (D3) — only a key's length, which is what distinguishes a truncated paste from a wrong key. *(Superseded in part by D17: an earlier version of this decision logged content at `Trace`; that capability has been removed outright, not just gated.)* See "Logging" below. |
 | D17 | **No content-bearing log message, cache, telemetry report, or diagnostic artifact may exist anywhere in this library or its samples, at any level — not gated behind an opt-in, removed outright.** Milestone 2's logging review initially fixed the test host defaulting to `Trace` by making `Trace` an explicit opt-in flag; that was rejected as insufficient (2026-08-14) because an opt-in is still a lever something else can pull — a misconfigured host, or another library sharing the same logging pipeline reconfiguring the same provider to `Trace` — with no code change on this library's part. That includes leaks this library doesn't write itself: `Microsoft.Extensions.AI`'s own `FunctionInvokingChatClient` logs full function arguments and results at `Trace` (the entire proposed script, for `propose_script_edit`), and `LoggingChatClient` logs full message and option content at `Trace` — both independent of anything in `ScriptChatLog`. `ScriptChatSession` closes both by wrapping every `ILoggerFactory` it's given in `TraceSuppressingLoggerFactory`, an internal decorator that reports `Trace` as disabled to every logger it hands out, including to those dependencies, regardless of how the underlying provider is configured. This is a hard boundary enforced by the type system at the one chokepoint every logger in this pipeline passes through, not a convention or a default that could be reconfigured back on. |
 | D18 | **The transcript is one continuously-appended `MarkdownTextBox`-derived control, not one `ChatTurnView` `UserControl` per turn; Accept/Reject moved from per-turn inline buttons to a single permanent pair below the transcript.** `ChatTurnView` (per-turn `UserControl`, each hosting its own richedit-backed `MarkdownTextBox` and `RichTextBox` for the diff) inside a `FlowLayoutPanel` with `AutoScroll = true` broke mouse-wheel scrolling: a richedit control consumes `WM_MOUSEWHEEL` unconditionally and never bubbles it to its parent, so hovering over any turn's text — not just the diff box — stalled the outer scroll. A single control sidesteps this entirely, since there is nothing above it to chain to; it needed `CDS.Markdown.Lite`'s `MarkdownTextBox` to grow two capabilities it didn't have (`AppendMarkdown` for rendered prose, `AppendPlainText` for unparsed monospaced diff lines with a background colour), added upstream in `CDS.Markdown` 1.5.5 since nothing else consumed the type yet and the interface was ours to change freely. Consequence: a diff can no longer word-wrap independently from prose (one control, one `WordWrap` setting) — accepted, since Markdown code fences already wrapped the same way in the old per-turn control. Moving Accept/Reject off individual turns required a new invariant the panel enforces: **at most one proposal is ever `PendingReview` at a time** — `SendCurrentInputAsync` now refuses to start a new turn while one is outstanding (previously unconstrained; the model could in principle emit a second proposal before the user acted on the first). The decision bar is enabled exactly while that invariant holds a pending turn, disabled otherwise; deciding it appends a short follow-up line to the transcript rather than rewriting the original diff's caption in place. |
 | D19 | **Job 3 — targeted patch edits use anchored find-and-replace hunks (`{OldText, NewText}`), not a unified-diff format or line-number ranges, via a new `propose_script_patch` tool alongside the unchanged `propose_script_edit`.** Checked what Claude Code's `Edit` tool and GitHub Copilot's `replace_string_in_file`/`multi_replace_string_in_file` tools actually do before designing this: both converge on exact-text anchored search/replace, never line numbers or diff-hunk parsing. Adopting the same technique resolves Job 3's hardest open question for free — "reconciliation when the model's line numbers drift" doesn't apply, because there are no line numbers; the only failure modes are a hunk's `OldText` no longer being present, or being ambiguous (matches more than once), and both fail closed with a clear error rather than attempting a fuzzy re-anchor, matching both tools' precedent. `ScriptPatchApplier.Apply` (`CDS.ScriptChat.Core`) implements this and is used twice: once inside `propose_script_patch` itself, to validate against the script the model was shown and let it retry within the same turn on a bad anchor; again on Accept, against a **fresh** read of the buffer via `ScriptTextProvider` rather than the frozen baseline the diff was rendered against — so a hunk that no longer applies (the user edited the buffer while the proposal sat pending) is caught at apply time instead of silently overwriting that edit. `ChatTurn` gained `ProposedHunks` (nullable, mutually exclusive with `ProposedCode`) rather than replacing `ProposedCode`, so a turn proposes at most one kind of edit and existing full-replacement code paths are untouched. Accept/Reject stays all-or-nothing per proposal via the single permanent bar from D18 — a patch can carry several hunks, but they are accepted or rejected together; per-hunk accept/reject was explicitly scoped out for this milestone. |
+| D20 | **A tool is offered to the model only when this host can actually answer it.** `lookup_symbol` was advertised unconditionally, including when `SymbolLookup` was the default `NullSymbolLookupProvider` — which resolves nothing. The model was therefore told an accurate API lookup existed, called it, was told "not found" every single time, and spent turns concluding the host's API wasn't real. That is silent degradation sitting on the default path: worse than having no lookup, because a model with no lookup falls back on recall and says so, while a model with a broken one distrusts the host. Fixed by building the tool list from what the host can back up — `lookup_symbol` is included only when `SymbolLookup` is not `NullSymbolLookupProvider` — and by assembling the system prompt from the same condition, so the prompt never instructs the model to lean on a tool it wasn't given. `NullSymbolLookupProvider` is kept, but its meaning changes from "answers nothing" to "there is no lookup here". Establishes the general rule for any future tool: advertise a capability only where it is real. *(An earlier draft of this decision also introduced a `ScriptChatMode` enum with a `ChatOnly` member, for hosts with no script at all. Withdrawn before commit on 2026-08-24 along with the scope that motivated it — see D21.)* |
+| D21 | **Scope narrowed, deliberately: this library is for C# script chat and nothing else.** Milestone-5 planning had drifted toward a general in-app AI assistant — chat with no script, settings query and mutation via host-registered tools, MCP transports, data review. Each step was individually defensible and the sum was not: it produced a package named `ScriptChat` whose headline feature was a mode for having no script, and an architecture whose seams were being drawn for use cases with no customer. Rejected on 2026-08-24 in favour of the original premise. The decisive argument was capacity rather than architecture — this is a single-maintainer library, and a design its maintainer cannot hold in their head is a liability whatever its factoring. Consequences: `ScriptChatMode` withdrawn; Jobs 6 (host-registered tools) and 7 (settings chat) parked with their evidence in `todo.features.md` rather than deleted; the `CDS.ScriptChat` name is correct rather than a compromise; and **D15 is superseded by D22**, because with the audience narrowed to hosts that already have a C# scripting engine, the objections to shipping Roslyn no longer apply to anyone actually being served. |
+| D22 | **Supersedes D15 for Roslyn specifically: `CDS.ScriptChat.Core` ships a working symbol lookup rather than only the interface for one.** D15's rule — define the abstraction, never implement it — produced exactly the outcome it was meant to prevent. Measured on the real adopter (2026-08-24): the OpenCvSharp Playground writes ~473 lines to use this library (`ScriptChatOrientation.cs` 185, `RoslynSymbolLookupProvider.cs` 86, `MainForm.Chat.cs` wiring 202), on top of ~636 lines of Roslyn tooling it had to build first (`ScriptSymbolLookup` 393, `ScriptApiIndex` 208, `ScriptSymbolInfo` 35). The 86-line adapter exists **verbatim twice** in that one repo — once in the app, once in its demo — and its own doc comment names the problem: *"This adapter is the entire cost of choosing your own chat library."* Every adopter writes the same thing, because there is only one sane implementation: obtain a `Compilation`, resolve, and map a four-property record onto `SymbolLookupResult`. So Core gains `RoslynSymbolResolver`, `RoslynSymbolLookupProvider` and `MetadataCompilation`, taking `Microsoft.CodeAnalysis.CSharp`. `ISymbolLookupProvider` stays public and unchanged — a host with its own engine still implements it, and the shipped provider is simply the answer for everyone else. The three objections in the original D15 note are all answered by D21's narrowed scope rather than waved away: **size** (~10 MB against the 11.90 MB of AI SDKs already shipped) is moot when every consumer is a scripting host that already loads Roslyn; **version diamonds** likewise, since those hosts already pin a Roslyn major via CDS.CSharpScripting2; and **irreversibility** cuts the other way now — adding a dependency is non-breaking, and the status quo is costing every adopter 500+ lines today. D15 still holds for everything else: no CDS.CSharpScripting2, no Scintilla, no OpenCvSharp, and the script buffer is still reached through host-supplied delegates. |
+| D23 | **`ScriptChatHostPanel` is the control an adopter drops in; `ScriptChatPanel` is the inner one.** Not a new control, a decision about which is the documented entry point. It fell out of building the easy path: the settings button, and therefore `SettingsRequested`, exists only on the host panel, so `UseStoredKey` and `AddScript` can only hang off it — and a single-script host is served perfectly well by a host panel with one target. The adopter-facing surface is now three calls, two of which are usually all that is needed: `AddScript(name, read, write, api)` per script, `UseStoredKey(applicationName)` once, and `LoggerFactory` if the host wants instrumentation. Two supporting decisions: **one `Type` drives both the orientation index and `lookup_symbol`** (via `ScriptChatSessionOptions.ForHostApi`), making structural the invariant the Playground previously maintained by hand — its shared `ComponentTypes` list existed so "what a model is told exists and what it can ask about cannot come apart"; and **wiring order no longer matters** — `SetTargets` previously created no sessions, so calling it after `Configure` left every target dead, and both it and `AddScript` now create sessions whenever a client already exists. `ScriptChatTarget`'s `Func<ScriptChatSessionOptions>` factory is retained but demoted: it exists for a host whose orientation must be captured when a conversation starts (the Playground's counterpart-script snapshot), and is no longer the shape every adopter meets first. |
 
 ## Logging
 
@@ -390,6 +431,9 @@ happened.
 
 ## Build order
 
+*(Historical — the order milestone 1 was built in. Roslyn arrived later, in
+Job 5 / D22.)*
+
 1. `CDS.ScriptChat.Core` — `ScriptChatSession`, `ScriptChatClientFactory`,
    `AssistantTurnResult`, `ChatTurn`. No Roslyn, no WinForms, no editor.
 2. `ISymbolLookupProvider` interface + a no-op implementation, wire
@@ -445,7 +489,13 @@ happened.
   closer to what VS/VS Code's integrated chat can already do, once the v1
   narrow scope shows where it actually falls short in practice. Added as new
   members with default implementations so existing host implementations keep
-  compiling.
+  compiling. Note D22 raises the stakes: Core now ships `RoslynSymbolResolver`,
+  so any widening has to be implemented there as well as defined.
+- **An `AddScript` overload taking a live compilation source.** A host whose
+  editor already produces a Roslyn `Compilation` currently wires ~5 lines rather
+  than the 2 the metadata path needs. Deliberately not added speculatively — the
+  Playground migration is the test of whether it is worth it. See
+  `todo.features.md` → "Start here".
 - ~~**Multi-script host support**~~ **Done.** Real feedback from extracting the
   OpenCvSharp Playground app, parked in `todo.packaging.md` ("Not packaging —
   API feedback from a consuming host"). Shipped as `ScriptChatTarget` (Core) and

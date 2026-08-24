@@ -248,7 +248,7 @@ release yet. Revisit once they are.") This is that revisit.
       build-provenance/SBOM attestations, per the standards doc's supply-chain
       additions — not in the original phase 6 draft, added because they're free
       and the fleet-wide convention now includes them.
-- [ ] **Corrected (2026-08-14), checked against the real docs
+- [x] **Corrected (2026-08-14), checked against the real docs
       (`learn.microsoft.com/nuget/nuget-org/trusted-publishing`) rather than
       assumed**: the "chicken-and-egg" problem this item used to describe
       isn't real. A Trusted Publishing policy is scoped to
@@ -291,19 +291,78 @@ what is lost is the exclusivity and the blue "reserved prefix" tick.
 - [ ] Either way, the practical defence without a reservation is to publish the
       IDs early (even as a prerelease) so nobody else takes
       `CDS.ScriptChat.Core` / `CDS.ScriptChat.WinForms`.
-- [ ] Push both `.nupkg` and `.snupkg`, with `--skip-duplicate`.
-- [ ] Create a GitHub Release from the tag (`softprops/action-gh-release@v2`,
-      `generate_release_notes: true`) with the packages attached.
-- [ ] Rehearse on a prerelease tag (e.g. `v0.1.0-preview.1`) before cutting
-      `v0.1.0`.
+- [x] ~~Push both `.nupkg` and `.snupkg`~~ / ~~Create a GitHub Release from the
+      tag~~ / ~~Rehearse on a prerelease tag~~ — leftovers from the original
+      phase-6 draft, all done by the real `V1.1.0` publish on 2026-08-14 (see
+      Status below). Ticked off 2026-08-24 so the list stops implying the release
+      pipeline is unfinished.
 
 ---
+
+## Next release — outstanding
+
+**The last publish was `V1.4.0`** — nuget.org carries `1.1.0, 1.2.0, 1.3.0,
+1.3.1, 1.4.0`, and all five tags are on the remote. *(This section previously
+said `V1.1.0`, which was stale by four releases; corrected 2026-08-24 by querying
+the nuget.org flat container and `git ls-remote --tags`.)*
+
+**Everything unreleased is the Job 5 adoption work**: four commits since the
+`V1.4.0` tag, plus the Playground-migration fix. Nothing else is outstanding.
+
+**Cut this as `V1.5.0`, not `V1.4.1`.** It is additive rather than breaking, but
+it is a large additive surface — `AddScript`, `UseStoredKey`, `ForHostApi`,
+`HostApiIndex`, `RoslynSymbolResolver`, `RoslynSymbolLookupProvider`,
+`MetadataCompilation`, `ScriptChatProviderPreference`, `SymbolLookedUpEventArgs`,
+`HostOrientationResolver.ResolveForScript`, `ScriptChatPanel.ReadyStatus` — plus a
+new package dependency (D22). A patch bump would understate all of it.
+
+**`CDS.OpenCvSharpPlayground` (app and demo) currently reference
+`1.4.1-alpha.0.4` from the `cds-local` feed**, not a released version. Bump both
+`.csproj` files to `1.5.0` once this release goes out, or that repo stays pinned
+to a local prerelease nobody else has.
+
+- [ ] **`CDS.ScriptChat.Core` now depends on `Microsoft.CodeAnalysis.CSharp` 5.9.0**
+      (D22). Non-breaking — no existing API changed — but it is a new transitive
+      dependency and roughly +10 MB deployed, so it belongs in release notes
+      rather than arriving unannounced. Version pinned to match what the
+      consuming scripting hosts already load, so no diamond is introduced.
+- [ ] **Behaviour change worth a release note**: a host that never wired a symbol
+      provider is no longer offered `lookup_symbol` at all (D20). That is the fix,
+      but it changes what the model is told.
+- [ ] **New public API to mention**: `ScriptChatHostPanel.AddScript` /
+      `UseStoredKey`, `ScriptChatSessionOptions.ForHostApi`, `HostApiIndex`,
+      `RoslynSymbolResolver`, `RoslynSymbolLookupProvider`, `MetadataCompilation`,
+      `ScriptChatProviderPreference`, `SymbolLookedUpEventArgs`,
+      `HostOrientationResolver.ResolveForScript`,
+      `ScriptChatPanel.ReadyStatus`.
+- [ ] **Behaviour change worth a release note**: the status line now keeps
+      `Ready · {provider} · {model}` instead of dropping to `Ready.` after the
+      first turn or on a target switch, and `ScriptChatHostPanel` shows it at all
+      (it previously only ever read `Ready.`). A host asserting on the literal
+      text `"Ready."` would see this.
+- [x] ~~**Do the Playground migration first**~~ — **done 2026-08-24**, against
+      `1.4.1-alpha.0.4` from the local feed. 213 net lines deleted from the
+      adopter; findings and the one API change they produced are written up in
+      `todo.features.md`. Nothing found that blocks publishing.
+- [ ] `PackageReleaseNotes` or a CHANGELOG (still open from phase 1b below).
 
 ## Decisions
 
 - **Two packages.** `CDS.ScriptChat.Core` and `CDS.ScriptChat.WinForms` ship
-  separately, keeping the Core/WinForms split of the design doc intact and
-  leaving room for a future WPF/Avalonia panel.
+  separately, keeping the Core/WinForms split of the design doc intact.
+  **Reaffirmed 2026-08-24** after explicitly considering merging them into one.
+  The case for merging was that nobody installs Core directly — both consumers
+  reference `CDS.ScriptChat.WinForms` and get Core transitively — so the
+  single-package *experience* already exists and the split is invisible at install
+  time. It was rejected because the cost is real (moving ~26 files, a namespace
+  choice that is either confusing or breaks every consumer's
+  `using CDS.ScriptChat.Core;`, retargeting `Core.Tests` to `net10.0-windows`,
+  reworking `release.yml`, and deprecating a live nuget.org package) and the gain
+  is one fewer package name to think about. The split also earns its keep as a
+  fence: Core cannot reference WinForms, so engine logic cannot drift into the
+  panel. Revisit only if a headless, console, or non-WinForms consumer appears.
+  (The original justification — "leaving room for a future WPF/Avalonia panel" —
+  is *not* the reason to keep it, and was rejected as speculative.)
 - **Multi-target `net48` and `net10.0`**, matching CDS.CSharpScript2 — see
   phase 1 for the work this pulls in.
 - **`CDS.` prefix reservation is off the table** — the prefix is already in use
@@ -339,11 +398,18 @@ extraction; nothing has been acted on in this repo.
       worth having, and D2 already confines provider knowledge to the enum and
       `ScriptChatClientFactory`, so the change is contained.
 
-**Explicitly not a complaint about the design.** `ISymbolLookupProvider`'s D15
-rule — define the abstraction, never implement it in-library — is exactly right,
-and `SymbolLookupResult` being four plain strings is what let the Workbench answer
-`lookup_symbol` from a live Roslyn compilation without this library knowing Roslyn
-exists. Both items above are missing conveniences, not wrong seams.
+~~**Explicitly not a complaint about the design.** `ISymbolLookupProvider`'s D15
+rule — define the abstraction, never implement it in-library — is exactly right…~~
+
+**Superseded 2026-08-24 by D22.** That judgement was wrong, and the evidence was
+already in this file: "a host with more than one script has to build the multi-target
+panel itself" was fixed by lifting it into the library, and the symbol-lookup
+adapter was exactly the same shape of problem — measured at ~473 lines per adopter
+plus ~636 lines of Roslyn tooling to build first, with the 86-line adapter
+duplicated verbatim inside one repo. Core now ships `RoslynSymbolResolver`,
+`RoslynSymbolLookupProvider`, `MetadataCompilation` and `HostApiIndex`.
+`ISymbolLookupProvider` stays public and unchanged for a host with its own engine,
+and `SymbolLookupResult` being four plain strings is still what makes that work.
 
 ---
 

@@ -1,9 +1,10 @@
 # CDS.ScriptChat.Core
 
 Provider-agnostic conversation engine behind the CDS.ScriptChat script+chat
-panel. Built on `Microsoft.Extensions.AI.IChatClient`, so the provider
-(Claude, OpenAI, Grok) is a configuration choice rather than a dependency.
-No WinForms, no Roslyn.
+panel, with Roslyn-backed symbol lookup so the assistant answers from your real
+API rather than from recall. Built on `Microsoft.Extensions.AI.IChatClient`, so
+the provider (Claude, OpenAI, Grok) is a configuration choice rather than a
+dependency. No WinForms.
 
 What it gives you:
 
@@ -18,13 +19,27 @@ What it gives you:
   clear reason rather than guessing.
 - Either way, proposals arrive as structured tool calls and are never applied
   automatically or parsed out of markdown fences.
-- `ISymbolLookupProvider` — the hook by which a host exposes its own API surface
-  to the assistant. The library ships only the interface.
-- `IScriptChatHostContext` — host-supplied description of the app the script
-  runs in.
+- `ScriptChatSessionOptions.ForHostApi(typeof(MyGlobals))` — the batteries-included
+  path. Name one type and you get both halves: an orientation index generated
+  from it by reflection, and a working `lookup_symbol` resolved against your own
+  assemblies. Because both come from the same type, what the assistant is told
+  exists and what it can ask about cannot drift apart.
+- `HostApiIndex` / `RoslynSymbolResolver` / `MetadataCompilation` — those two
+  halves on their own, for a host that wants one and not the other.
+- `RoslynSymbolLookupProvider` — also takes a live
+  `Func<CancellationToken, Task<Compilation?>>`, if your editor already produces
+  a compilation.
+- `ISymbolLookupProvider` — still the hook by which a host with its own symbol
+  engine answers instead. `lookup_symbol` is offered to the model only when
+  something can actually answer it.
 - `ScriptChatTarget` — describes one of a host's scripts (name, read/write
   delegates, session-options factory) for `CDS.ScriptChat.WinForms`'s
   `ScriptChatHostPanel` to drive a conversation per script.
+
+> Set `<GenerateDocumentationFile>true</GenerateDocumentationFile>` in your app.
+> Roslyn only finds an assembly's documentation when the `.xml` is deployed
+> beside the `.dll`; without it every lookup returns a correct signature with no
+> prose, which looks fine and isn't.
 
 For a ready-made WinForms UI on top of this, see **CDS.ScriptChat.WinForms**.
 

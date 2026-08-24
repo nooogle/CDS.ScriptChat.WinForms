@@ -113,6 +113,50 @@ public sealed class HostPanelTests
         FindChatPanel(panel).IsReady.Should().BeFalse();
     }
 
+    [TestMethod]
+    public void Configure_NamesTheProviderAndModelOnTheStatusLine()
+    {
+        // This panel builds its own client, so ScriptChatPanel.Configure — which is what usually
+        // puts the provider on the status line — never runs. It read a bare "Ready.", leaving a
+        // host-panel user with no way to see which provider was live.
+        using var panel = new ScriptChatHostPanel();
+        panel.SetTargets(MakeTarget("A"));
+
+        panel.Configure(ClaudeOptions);
+
+        FindStatus(panel).Text.Should().Be($"Ready · Claude · {ScriptChatModels.ClaudeDefault}");
+    }
+
+    [TestMethod]
+    public void SwitchingTarget_KeepsTheProviderOnTheStatusLine()
+    {
+        using var panel = new ScriptChatHostPanel();
+        panel.SetTargets(MakeTarget("A"), MakeTarget("B"));
+        panel.Configure(ClaudeOptions);
+
+        FindSelector(panel).SelectedIndex = 1;
+
+        // Switching target re-attaches a session, which is where a one-off status message would
+        // have been lost.
+        FindStatus(panel).Text.Should().Be($"Ready · Claude · {ScriptChatModels.ClaudeDefault}");
+    }
+
+    [TestMethod]
+    public void SetUnavailable_AfterConfigure_StopsNamingTheProvider()
+    {
+        using var panel = new ScriptChatHostPanel();
+        panel.SetTargets(MakeTarget("A"));
+        panel.Configure(ClaudeOptions);
+
+        panel.SetUnavailable("No API key configured.");
+
+        FindStatus(panel).Text.Should().Be("No API key configured.");
+        FindChatPanel(panel).ReadyStatus.Should().BeNull("a provider that is no longer live must not linger");
+    }
+
+    private static Label FindStatus(ScriptChatHostPanel panel) =>
+        panel.Controls.Find("_statusLabel", searchAllChildren: true).OfType<Label>().Single();
+
     private static ComboBox FindSelector(ScriptChatHostPanel panel) =>
         panel.Controls.Find("_targetSelector", searchAllChildren: true).OfType<ComboBox>().Single();
 

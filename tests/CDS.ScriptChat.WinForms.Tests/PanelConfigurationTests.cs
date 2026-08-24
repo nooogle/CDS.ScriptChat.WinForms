@@ -125,6 +125,23 @@ public sealed class PanelConfigurationTests
         FindTranscript(panel).Lines.Should().Contain("  one").And.Contain("+ two");
     }
 
+    [TestMethod]
+    public void Configure_ThenAnotherSessionAttached_StillNamesTheProviderOnTheStatusLine()
+    {
+        // The provider used to be written once, by Configure, and dropped back to a plain "Ready."
+        // by the next AttachSession — which is every target switch on ScriptChatHostPanel, and the
+        // end of every turn. It is now a property, so the status line cannot lose it.
+        using var panel = new ScriptChatPanel { ScriptTextProvider = () => "var x = 1;" };
+        panel.Configure(ClaudeOptions);
+
+        panel.AttachSession(new ScriptChatSession(new FakeChatClient(FakeChatClient.Text("Hello."))));
+
+        FindStatus(panel).Text.Should().Be($"Ready · Claude · {ScriptChatModels.ClaudeDefault}");
+    }
+
+    private static Label FindStatus(ScriptChatPanel panel) =>
+        panel.Controls.Find("_statusLabel", searchAllChildren: true).OfType<Label>().Single();
+
     private static MarkdownTextBox FindTranscript(ScriptChatPanel panel) =>
         panel.Controls.Find("_transcriptTextBox", searchAllChildren: true).OfType<MarkdownTextBox>().Single();
 }

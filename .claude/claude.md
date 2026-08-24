@@ -9,10 +9,12 @@ OpenCvSharp-specific; provider-agnostic (Claude/OpenAI/Grok via
 
 ## Read first
 
-`cds.scriptchat.design.md` (repo root) — architecture, decision log (D1–D17),
-use cases, and current milestone scope. Read it before writing code. Don't
+`cds.scriptchat.design.md` (repo root) — architecture, decision log (D1–D23),
+use cases, and current status. Read it before writing code. Don't
 duplicate its content here; if a rule from there matters for every session,
 add a one-line pointer below instead of copying it in full.
+
+Then `todo.features.md` → **"Start here"** for what is actually next.
 
 ## Hard rules
 
@@ -37,13 +39,21 @@ add a one-line pointer below instead of copying it in full.
   own `Trace`-level content logging, not just this library's own messages.
   Before adding any new logging, caching, or diagnostics — here or in any
   future feature — check it against this rule. (D17)
-- Proposed code edits arrive only via the `propose_script_edit` tool call and
-  are shown as a diff, never auto-applied, never parsed out of markdown
-  fences. (D5)
-- Nothing use-case-specific ships in the library: no Roslyn, no
-  CDS.CSharpScripting2, no Scintilla, no OpenCvSharp. Symbol lookup is an
-  interface the host implements; the script buffer is reached through
-  host-supplied delegates. (D15)
+- Proposed code edits arrive only via the `propose_script_edit` /
+  `propose_script_patch` tool calls and are shown as a diff, never auto-applied,
+  never parsed out of markdown fences. (D5)
+- **Scope: C# script chat, nothing else.** Not a general in-app assistant, not
+  settings mutation, not MCP, not data review. All of those were considered and
+  parked on 2026-08-24 with the reasoning recorded — reopen by arguing against
+  D21, not by working around it. (D21)
+- Nothing *host*-specific ships in the library: no CDS.CSharpScripting2, no
+  Scintilla, no OpenCvSharp, no assumption about the editor control — the script
+  buffer is reached through host-supplied delegates. **Roslyn is the one
+  exception** (D22): Core ships a working symbol lookup because defining only the
+  interface was measured to cost every adopter ~500 lines of identical code.
+  `ISymbolLookupProvider` stays public for a host with its own engine. (D15, D22)
+- A tool is advertised to the model only when this host can actually answer it.
+  A tool that always fails is worse than an absent one. (D20)
 - One milestone per session. Stay inside the current milestone's scope as
   stated in cds.scriptchat.design.md — don't implement later-milestone use
   cases opportunistically.

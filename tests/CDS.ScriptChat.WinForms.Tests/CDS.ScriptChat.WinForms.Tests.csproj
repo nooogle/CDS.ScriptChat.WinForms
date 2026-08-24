@@ -24,12 +24,18 @@
 
 		<!-- The sample host owns the CSV logging provider, so its formatting is covered here. -->
 		<ProjectReference Include="..\..\samples\CDS.ScriptChat.TestHost\CDS.ScriptChat.TestHost.csproj" />
+		<!-- The adoption sample is the acceptance test for the easy path: if what it wires up
+		     stops producing a usable orientation and lookup, the quickstart is broken. -->
+		<ProjectReference Include="..\..\samples\CDS.ScriptChat.SampleApp\CDS.ScriptChat.SampleApp.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<!-- Shared with the Core tests rather than duplicated, so the scripted chat client
 		     stays in one place. -->
 		<Compile Include="..\CDS.ScriptChat.Core.Tests\FakeChatClient.cs" Link="FakeChatClient.cs" />
+		<!-- The same host-shaped API fixtures the Core tests use, so AddScript is exercised
+		     against a realistic globals type rather than a second set of stand-ins. -->
+		<Compile Include="..\CDS.ScriptChat.Core.Tests\SampleScriptTypes.cs" Link="SampleScriptTypes.cs" />
 	</ItemGroup>
 
 </Project>

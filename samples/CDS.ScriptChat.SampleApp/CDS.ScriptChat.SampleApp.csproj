@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net10.0-windows</TargetFramework>
+		<UseWindowsForms>true</UseWindowsForms>
+		<ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+		<IsPackable>false</IsPackable>
+		<RootNamespace>CDS.ScriptChat.SampleApp</RootNamespace>
+
+		<!-- The assistant answers lookup_symbol out of this assembly's metadata, and Roslyn only
+		     finds documentation when the .xml is deployed beside the .dll. Without this, every
+		     lookup would return a correct signature with no prose — which looks fine and is not.
+		     Any adopting app wanting good answers about its own API needs this line. -->
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<NoWarn>$(NoWarn);CS1591</NoWarn>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\src\CDS.ScriptChat.WinForms\CDS.ScriptChat.WinForms.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Runs the script. Nothing to do with the chat library — it is here so the sample shows
+		     the whole loop (ask, accept, run) rather than an editor whose contents never execute.
+		     Version matches the Roslyn the chat library already brings, so no diamond. -->
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.9.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- The prose half of the orientation blurb. AddScript picks this up from beside the
+		     executable and puts the generated API index underneath it. -->
+		<Content Include="scriptchat.context.md">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+
+</Project>

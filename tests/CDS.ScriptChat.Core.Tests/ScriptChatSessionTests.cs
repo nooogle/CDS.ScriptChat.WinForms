@@ -186,15 +186,44 @@ public sealed class ScriptChatSessionTests
     }
 
     [TestMethod]
-    public async Task SendAsync_Always_ExposesBothToolsToTheModel()
+    public async Task SendAsync_WithARealSymbolProvider_ExposesAllThreeToolsToTheModel()
+    {
+        var client = new FakeChatClient(FakeChatClient.Text("Fine."));
+        var session = new ScriptChatSession(client, new ScriptChatSessionOptions
+        {
+            SymbolLookup = new StubSymbolLookupProvider([]),
+        });
+
+        await session.SendAsync("Hello", SampleScript);
+
+        client.LastOptions!.Tools!.Select(t => t.Name)
+            .Should().BeEquivalentTo(["lookup_symbol", "propose_script_edit", "propose_script_patch"]);
+    }
+
+    [TestMethod]
+    public async Task SendAsync_NoSymbolProviderWired_DoesNotAdvertiseLookupSymbol()
     {
         var client = new FakeChatClient(FakeChatClient.Text("Fine."));
         var session = new ScriptChatSession(client);
 
         await session.SendAsync("Hello", SampleScript);
 
+        // Advertising a lookup that answers "not found" to everything is worse than not having
+        // one: the model calls it, disbelieves the answer, and decides the host's API isn't real.
         client.LastOptions!.Tools!.Select(t => t.Name)
-            .Should().BeEquivalentTo(["lookup_symbol", "propose_script_edit", "propose_script_patch"]);
+            .Should().BeEquivalentTo(["propose_script_edit", "propose_script_patch"]);
+    }
+
+    [TestMethod]
+    public async Task SendAsync_NoSymbolProviderWired_LeavesTheLookupRuleOutOfTheSystemPrompt()
+    {
+        var client = new FakeChatClient(FakeChatClient.Text("Fine."));
+        var session = new ScriptChatSession(client);
+
+        await session.SendAsync("Hello", SampleScript);
+
+        // The prompt must not instruct the model to lean on a tool it was never given.
+        client.ReceivedRequests[0][0].Text.Should().NotContain("lookup_symbol");
     }
 
     [TestMethod]

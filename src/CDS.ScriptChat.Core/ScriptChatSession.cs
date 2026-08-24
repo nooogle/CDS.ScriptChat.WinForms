@@ -130,12 +130,21 @@ public sealed class ScriptChatSession
         // write anything — a permanently inert pipeline stage, not worth carrying.
         _chatClient = chatClient.AsBuilder().UseFunctionInvocation(loggerFactory).Build();
 
-        _tools =
-        [
-            AIFunctionFactory.Create(LookupSymbolAsync, name: "lookup_symbol"),
-            AIFunctionFactory.Create(ProposeScriptEdit, name: "propose_script_edit"),
-            AIFunctionFactory.Create(ProposeScriptPatch, name: "propose_script_patch"),
-        ];
+        // lookup_symbol is offered only when a provider can actually answer it. Advertised
+        // against NullSymbolLookupProvider it answers "not found" to everything, which reads to
+        // a model as "this host's API does not exist" — worse than having no lookup at all.
+        _tools = _options.SymbolLookup is NullSymbolLookupProvider
+            ?
+            [
+                AIFunctionFactory.Create(ProposeScriptEdit, name: "propose_script_edit"),
+                AIFunctionFactory.Create(ProposeScriptPatch, name: "propose_script_patch"),
+            ]
+            :
+            [
+                AIFunctionFactory.Create(LookupSymbolAsync, name: "lookup_symbol"),
+                AIFunctionFactory.Create(ProposeScriptEdit, name: "propose_script_edit"),
+                AIFunctionFactory.Create(ProposeScriptPatch, name: "propose_script_patch"),
+            ];
 
         _logger.SessionCreated(_tools.Count);
     }
@@ -421,11 +430,21 @@ public sealed class ScriptChatSession
               changing anyway.
             - If the user asks a question that implies no code change, just answer. Do not call
               either proposal tool.
-            - Before relying on any API detail you are not certain of, call lookup_symbol. It
-              is answered by this host application itself, so it is accurate where recall may
-              not be. A "not found" answer means the symbol is not available here.
-            - Keep prose brief and focused on what changed and why.
             """);
+
+        // Only worth telling the model about a tool it has actually been given. Unconditional,
+        // this rule points it at a lookup that may not exist.
+        if (_tools.Any(tool => tool.Name == "lookup_symbol"))
+        {
+            prompt.AppendLine(
+                """
+                - Before relying on any API detail you are not certain of, call lookup_symbol. It
+                  is answered by this host application itself, so it is accurate where recall may
+                  not be. A "not found" answer means the symbol is not available here.
+                """);
+        }
+
+        prompt.AppendLine("- Keep prose brief and focused on what changed and why.");
 
         var hasOrientation = !string.IsNullOrWhiteSpace(_options.OrientationBlurb);
         if (hasOrientation)
