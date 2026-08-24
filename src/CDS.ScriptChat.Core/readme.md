@@ -32,14 +32,14 @@ What it gives you:
 - `ISymbolLookupProvider` — still the hook by which a host with its own symbol
   engine answers instead. `lookup_symbol` is offered to the model only when
   something can actually answer it.
+- `ScriptChatTarget` — describes one of a host's scripts (name, read/write
+  delegates, session-options factory) for `CDS.ScriptChat.WinForms`'s
+  `ScriptChatHostPanel` to drive a conversation per script.
 
 > Set `<GenerateDocumentationFile>true</GenerateDocumentationFile>` in your app.
 > Roslyn only finds an assembly's documentation when the `.xml` is deployed
 > beside the `.dll`; without it every lookup returns a correct signature with no
 > prose, which looks fine and isn't.
-- `ScriptChatTarget` — describes one of a host's scripts (name, read/write
-  delegates, session-options factory) for `CDS.ScriptChat.WinForms`'s
-  `ScriptChatHostPanel` to drive a conversation per script.
 
 For a ready-made WinForms UI on top of this, see **CDS.ScriptChat.WinForms**.
 

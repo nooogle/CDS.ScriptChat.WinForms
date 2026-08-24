@@ -301,9 +301,25 @@ what is lost is the exclusivity and the blue "reserved prefix" tick.
 
 ## Next release — outstanding
 
-The last publish was `V1.1.0` (2026-08-14); consuming apps currently reference
-`1.4.0`. Since then the Job 5 adoption work landed (D20–D23), which changes what
-ships:
+**The last publish was `V1.4.0`** — nuget.org carries `1.1.0, 1.2.0, 1.3.0,
+1.3.1, 1.4.0`, and all five tags are on the remote. *(This section previously
+said `V1.1.0`, which was stale by four releases; corrected 2026-08-24 by querying
+the nuget.org flat container and `git ls-remote --tags`.)*
+
+**Everything unreleased is the Job 5 adoption work**: four commits since the
+`V1.4.0` tag, plus the Playground-migration fix. Nothing else is outstanding.
+
+**Cut this as `V1.5.0`, not `V1.4.1`.** It is additive rather than breaking, but
+it is a large additive surface — `AddScript`, `UseStoredKey`, `ForHostApi`,
+`HostApiIndex`, `RoslynSymbolResolver`, `RoslynSymbolLookupProvider`,
+`MetadataCompilation`, `ScriptChatProviderPreference`, `SymbolLookedUpEventArgs`,
+`HostOrientationResolver.ResolveForScript`, `ScriptChatPanel.ReadyStatus` — plus a
+new package dependency (D22). A patch bump would understate all of it.
+
+**`CDS.OpenCvSharpPlayground` (app and demo) currently reference
+`1.4.1-alpha.0.4` from the `cds-local` feed**, not a released version. Bump both
+`.csproj` files to `1.5.0` once this release goes out, or that repo stays pinned
+to a local prerelease nobody else has.
 
 - [ ] **`CDS.ScriptChat.Core` now depends on `Microsoft.CodeAnalysis.CSharp` 5.9.0**
       (D22). Non-breaking — no existing API changed — but it is a new transitive
@@ -317,10 +333,17 @@ ships:
       `UseStoredKey`, `ScriptChatSessionOptions.ForHostApi`, `HostApiIndex`,
       `RoslynSymbolResolver`, `RoslynSymbolLookupProvider`, `MetadataCompilation`,
       `ScriptChatProviderPreference`, `SymbolLookedUpEventArgs`,
-      `HostOrientationResolver.ResolveForScript`.
-- [ ] **Do the Playground migration first** — see `todo.features.md` → "Start
-      here". Publishing before it means any API mistake it would have found is
-      permanent.
+      `HostOrientationResolver.ResolveForScript`,
+      `ScriptChatPanel.ReadyStatus`.
+- [ ] **Behaviour change worth a release note**: the status line now keeps
+      `Ready · {provider} · {model}` instead of dropping to `Ready.` after the
+      first turn or on a target switch, and `ScriptChatHostPanel` shows it at all
+      (it previously only ever read `Ready.`). A host asserting on the literal
+      text `"Ready."` would see this.
+- [x] ~~**Do the Playground migration first**~~ — **done 2026-08-24**, against
+      `1.4.1-alpha.0.4` from the local feed. 213 net lines deleted from the
+      adopter; findings and the one API change they produced are written up in
+      `todo.features.md`. Nothing found that blocks publishing.
 - [ ] `PackageReleaseNotes` or a CHANGELOG (still open from phase 1b below).
 
 ## Decisions

@@ -24,7 +24,9 @@ one-line change — an anchored find/replace patch, not a full rewrite (see
 [What it can do](#what-it-can-do)) — rendered as a diff with Accept/Reject
 enabled until the user decides. `ScriptChatSettingsPanel` (top right) handles
 BYOK onboarding; `ScriptChatPanel` (the transcript, diff, and input below it)
-is the conversation itself. Every consuming app wires the same two controls.*
+is the conversation itself. This host wires both controls by hand to show them
+separately; in an ordinary app `UseStoredKey` puts the settings dialogue behind
+a button for you — see [Quick start](#quick-start).*
 
 ## Why
 
@@ -83,14 +85,67 @@ and focused on that one package. This document is the wider picture: what the
 library is for, how the pieces fit together, and how to get started from a
 clean checkout.
 
+## Install
+
+```
+dotnet add package CDS.ScriptChat.WinForms
+```
+
+`CDS.ScriptChat.Core` comes with it — you don't reference it separately unless
+you're building a non-WinForms host. Targets **.NET 10** (`net10.0-windows`).
+
+You also need one line in your `.csproj`, and it is the single easiest thing to
+get wrong:
+
+```xml
+<PropertyGroup>
+  <GenerateDocumentationFile>true</GenerateDocumentationFile>
+</PropertyGroup>
+```
+
+Roslyn only finds an assembly's documentation when the `.xml` is deployed beside
+the `.dll`. Without it, every symbol lookup returns a correct signature with **no
+prose** — which looks like it's working, and isn't.
+
 ## Quick start
 
-Drop a `ScriptChatHostPanel` on a form in the WinForms Designer (it's a
-standard `UserControl`), then wire it up with two calls:
+### 1. Have a type your scripts are written against
+
+Most apps that run C# scripts already have one — the "globals" object a script
+sees without qualifying anything. If yours is a single flat API class, that
+works too. Here's the one from the bundled sample, in full:
 
 ```csharp
-// 1. Point it at your script, and name the type your scripts are written
-//    against. That one type does two jobs — see below.
+/// <summary>
+/// What a script sees without qualifying anything: the station's API, plus the
+/// tolerance the current job is running to.
+/// </summary>
+public sealed class ScriptGlobals
+{
+    /// <summary>Gets the inspection station's API.</summary>
+    public required InspectionApi API { get; init; }
+
+    /// <summary>Gets the largest dimension, in mm, that still counts as a pass.</summary>
+    public double UpperLimitMm { get; init; } = 12.5;
+
+    /// <summary>Gets the smallest dimension, in mm, that still counts as a pass.</summary>
+    public double LowerLimitMm { get; init; } = 11.5;
+}
+```
+
+`InspectionApi` behind it is just ordinary code with ordinary XML docs —
+`Measure(string partName)`, `Record(string partName, bool passed)`,
+`Log(string message)`, `Parts`, `PassCount`, `FailCount`. **You register none
+of it.** No attributes, no catalogue, no tool schema.
+
+### 2. Drop the panel on a form and wire it up
+
+`ScriptChatHostPanel` is a standard `UserControl`, so it goes on in the WinForms
+Designer like anything else. Then:
+
+```csharp
+// 1. Point it at your script, and name the type from step 1.
+//    That one type does two jobs — see below.
 _chatPanel.AddScript(
     name:  "Inspection",
     read:  () => _scriptTextBox.Text,
@@ -106,6 +161,22 @@ _chatPanel.UseStoredKey("MyApp");
 That's the integration. The panel starts switched off with a pointer at its
 Settings button until the user enters their own key.
 
+### 3. What the user sees
+
+They type a request in plain English about the script that's open:
+
+> *Log how far out of tolerance each failing part is.*
+
+Behind that, the assistant already knows `Measure`, `Record` and `UpperLimitMm`
+exist — the index generated from `ScriptGlobals` is in its system prompt. Before
+using anything it isn't sure of, it calls `lookup_symbol` and gets back the real
+signature **and your XML doc comment**. Then it proposes a change.
+
+The proposal renders inline as a red/green diff with **Accept edit** /
+**Reject edit** beneath it. Nothing touches `_scriptTextBox` until Accept is
+clicked — and sending another message is disabled until the user decides, so a
+proposal can't get buried under later chat.
+
 ### What `api: typeof(ScriptGlobals)` buys you
 
 That single type is used twice, and the two uses cannot drift apart:
@@ -118,18 +189,26 @@ That single type is used twice, and the two uses cannot drift apart:
   XML documentation you already wrote — so it uses APIs that exist rather than
   ones that sound plausible.
 
-> **Set `<GenerateDocumentationFile>true</GenerateDocumentationFile>` in your
-> app's project.** Roslyn only finds an assembly's documentation when the
-> `.xml` is deployed beside the `.dll`. Without it, every lookup returns a
-> correct signature with no prose — which looks fine, and isn't. This is the
-> single easiest thing to get wrong.
+Add a method to `InspectionApi` and the assistant knows about it on the next
+run. There is nothing to keep in sync.
 
 ### Optional: a `scriptchat.context.md` beside your executable
 
-Carries the prose a generated index can't — *why* these scripts exist, and the
-conventions a proposed change should keep to. It's picked up automatically and
-placed above the index. Skip it and everything still works; the assistant just
-knows less.
+The generated index says *what exists*. It can't say **why** — what these
+scripts are for, house conventions a change should keep to, or the traps
+particular to your app. Drop a markdown file beside your executable and it's
+picked up automatically and placed above the index:
+
+```
+scriptchat.context.md              ← shared by every script
+scriptchat.inspection.context.md   ← just the script named "Inspection"
+```
+
+A per-script file wins where it exists and falls back to the shared one, so a
+host with several scripts writes one file until a script actually needs its own.
+The name comes from what you passed to `AddScript`, lowercased with spaces
+removed. Skip all of this and everything still works — the assistant just knows
+less. It's a plain file, so you can tune the wording without a rebuild.
 
 ### The worked example
 
@@ -208,20 +287,34 @@ design record for this project and the best next read after this file.
 
 ## Status
 
-Milestones 1 and 2 are complete: single- and multi-turn conversations, Q&A,
-symbol lookup, diff/accept edits, and BYOK onboarding all work end to end
-against both Claude and OpenAI. Since then, targeted patch edits
-(`propose_script_patch`) and a single continuously-scrolling transcript have
-shipped (D18, D19), followed by the adoption work above — Roslyn symbol lookup
-in the box, and the two-call `AddScript`/`UseStoredKey` wiring that replaced
-roughly 470 lines of adapter code in the first consuming app (D20–D23).
+**Working end to end, against both Claude and OpenAI**: multi-turn
+conversations, Q&A about the open script, symbol lookup from your own
+assemblies, full-rewrite and targeted-patch edits with diff/accept review, and
+BYOK onboarding.
 
-The scope is deliberately **C# script chat and nothing else** (D21). General
-in-app assistants, settings mutation, and MCP transports were considered and
-parked, with the reasoning kept in
-[`todo.features.md`](todo.features.md). Grok, mid-session provider switching,
-streaming responses, and per-hunk accept/reject remain deferred — see "Future
-milestones" in the design doc.
+**Proven on a real adopter, not just the sample.** Before this library shipped
+Roslyn support, the first consuming app (an OpenCvSharp image-processing
+playground) hand-wrote ~473 lines of adapter and wiring — and had to build ~636
+lines of Roslyn symbol tooling *first* to have anything to adapt. A new adopter
+now writes neither. Migrating that app onto the current API deleted 213 net
+lines and left only what was genuinely its own, and it is what shook out the
+last round of API fixes.
+
+**Not there yet**, and deliberately so:
+
+| | |
+|---|---|
+| Grok | Enum value exists; the factory throws. Claude and OpenAI are wired. |
+| Gemini, local/self-hosted models | No base-URL override yet. Local models are the most-wanted of these — see `todo.features.md`. |
+| Streaming responses | A turn arrives complete, not token by token. |
+| Per-hunk accept/reject | A patch is accepted or rejected whole. |
+| Image/multi-modal input | Text only. |
+| Non-WinForms UI | Core has no WinForms dependency, but no WPF/Avalonia panel exists. |
+
+The scope is deliberately **C# script chat and nothing else**. General in-app
+assistants, settings mutation, and MCP transports were each considered and
+parked with the reasoning written down — see [`todo.features.md`](todo.features.md)
+if you want to argue with it.
 
 ## Building from source
 

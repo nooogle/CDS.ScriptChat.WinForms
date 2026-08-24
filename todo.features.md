@@ -13,48 +13,82 @@ it; the arguments were had properly and are recorded.
 
 ## ▶ Start here — next session
 
-**Job 5 is complete** (all six items, 2026-08-24). 129 Core + 120 WinForms tests
-green. The adoption path is now two calls; see the root `README.md` quick start.
+**Job 5 is complete** (all six items, 2026-08-24), and so is the Playground
+migration that was meant to prove it (2026-08-24, below). 129 Core + 124 WinForms
+tests green. The adoption path is two calls; see the root `README.md` quick start.
 
-Two things follow from it, in this order:
+- [ ] **Release, as `V1.5.0`.** The only thing left before publishing. The last
+  publish was `V1.4.0`; everything unreleased is the Job 5 adoption work (four
+  commits since the tag, plus the Playground-migration fix). Additive but large —
+  a whole new adoption API, plus a `Microsoft.CodeAnalysis.CSharp` dependency
+  (D22) and `ScriptChatPanel.ReadyStatus`. See `todo.packaging.md` → "Next
+  release" for the full list and the bump rationale.
 
-- [ ] **1. Migrate `CDS.OpenCvSharpPlayground` onto the new API.** The adjacent
-  repo at `c:\dev\nooogle\CDS.OpenCvSharpPlayground`, which is what Job 5's
-  measurements came from. **Do this before publishing** — it is the only real
-  proof the new API works for an actual adopter, and any mistake it finds is free
-  to fix now and permanent once released.
-  - Delete: both copies of `RoslynSymbolLookupProvider` (86 lines each — one in
-    `src/CDS.OpenCvSharpPlayground.App`, one in `demo/UseCasesDemo`),
-    `ScriptSymbolInfo` and its mapping, and most of `ScriptChatOrientation`
-    (185 lines). Upstream, `ScriptSymbolLookup` (393) and `ScriptApiIndex` (208)
-    in `CDS.OpenCvSharpWorkbench.WinForms` become dead.
-  - Replace the ~70 lines of key/settings/restore in `MainForm.Chat.cs` with
-    `UseStoredKey`. Note the Playground keeps provider/model in its own settings
-    file, so it wants the `UseStoredKey(applicationName, load, save)` overload.
-  - **Expected friction, worth watching for.** The Playground has a *live editor
-    compilation* (`editor.API.GetCompilationAsync`), but `AddScript`'s easy
-    overload builds a *metadata* compilation instead. So it will use
-    `new RoslynSymbolLookupProvider(ct => editor.API.GetCompilationAsync(ct), resolver)`
-    plus the session-options-factory overload of `AddScript` — about five lines,
-    not two. **If that reads badly, the answer is probably an
-    `AddScript(name, read, write, api, compilationSource, additionalTypes)`
-    overload.** Deliberately not added speculatively; let the migration decide.
-  - The resolver takes `IEnumerable<string>` rather than the workbench's
-    `ScriptEnvironment`, so the replacement is
-    `new RoslynSymbolResolver(editor.API.Environment.NamespaceNames, globalsType, componentTypes)`.
-  - Per-script orientation prose now has a convention:
-    `scriptchat.workspace.context.md` / `scriptchat.processing.context.md` beside
-    the executable, falling back to a shared `scriptchat.context.md`. That
-    replaces the Playground's hand-rolled `ReadContext`, though note the library
-    has **no embedded-resource fallback** — if the Playground relies on that,
-    decide whether to keep its own loader or add the fallback to the library.
-
-- [ ] **2. Release.** Core gained a `Microsoft.CodeAnalysis.CSharp` dependency
-  (D22) — non-breaking, but notable enough to want release notes. See
-  `todo.packaging.md` → "Next release".
-
-After those, the open work is the bug in `todo.bugs.md`, the two Known Issues
+After that, the open work is the bug in `todo.bugs.md`, the two Known Issues
 below, and the parked jobs.
+
+### ✅ Migrating `CDS.OpenCvSharpPlayground` onto the new API — done 2026-08-24
+
+The adjacent repo at `c:\dev\nooogle\CDS.OpenCvSharpPlayground`, which is where
+Job 5's measurements came from, now consumes `1.4.1-alpha.0.4` from the local
+feed. **213 net lines deleted** from the adopter, whole solution builds with 0
+warnings, its 154 tests green, and the app was launched and screenshotted with a
+live Claude client and both conversations created (`Tools=3`, so `lookup_symbol`
+is genuinely advertised).
+
+What went, as planned: both copies of the hand-written
+`RoslynSymbolLookupProvider` (86 lines each), the app's `SymbolLookupEventArgs`
+(27), the demo's `ScriptChatSymbolLookup` (55), `ScriptChatOrientation`'s
+`ReadContext` and its embedded-resource fallback, and the ~70 lines of
+key/settings/restore in `MainForm.Chat.cs` — replaced by
+`UseStoredKey(applicationName, load, save)`, since the Playground keeps
+provider/model in its own settings file.
+
+**Five findings, in order of how much they mattered.**
+
+1. **The host panel's status line lost the provider — fixed here.** This was
+   already recorded as "known gap, minor" under Job 5 item 2, and the migration
+   turned it into a real regression: the Playground used to log *"AI chat ready:
+   Claude · claude-sonnet-5"* to its output strip from the code `UseStoredKey`
+   replaced, and after the migration nothing said which provider was live.
+   `ScriptChatPanel.SetStatus($"Ready · …")` was a **one-off write** that the
+   next `AttachSession` overwrote with a plain `"Ready."` — so even the inner
+   panel dropped the provider at the end of the first turn, and on every target
+   switch. Now `ScriptChatPanel.ReadyStatus` (new public property), set by
+   `Configure` and by `ScriptChatHostPanel.Configure`, cleared by
+   `SetUnavailable`. Four new tests; three existing `AddScriptTests` assertions
+   updated from `"Ready."` to `StartWith("Ready · Claude · ")`.
+2. **The predicted `AddScript(…, compilationSource, …)` overload is not the
+   answer, and was not added.** The prediction was right that the Playground
+   cannot use the easy path, but wrong about why. The blocker is not the
+   compilation source — it is that the orientation carries a **snapshot of the
+   counterpart script**, so it must be built per conversation, which only the
+   session-options-factory overload can do. An overload taking a compilation
+   source would still fix the orientation at wiring time and so would not have
+   helped. What the Playground writes instead is a 25-line private
+   `AddChatScript` helper called twice, and it reads fine.
+3. **No embedded-resource fallback was needed.** The Playground shipped its
+   context markdown twice — copied beside the executable *and* embedded — and
+   the embedded copy was dropped rather than added to the library. A second copy
+   that only ever masks a failed deployment is not worth the loader it needs, and
+   `HostOrientationResolver.ResolveForScript` found both files first time.
+4. **`HostApiIndex.Describe` now leads with the root type**, so the Playground's
+   index gained `- \`WorkspaceGlobals\`: API` / `- \`ProcessingGlobals\`: API`
+   ahead of what `ScriptApiIndex` used to emit. That is the item-4 flat-API fix
+   working as designed; slightly redundant for a globals type whose only member
+   is `API`, and not worth special-casing.
+5. **`RoslynSymbolResolver` rejects a null namespace list** where the workbench's
+   `ScriptSymbolLookup` accepted a nullable `ScriptEnvironment`. Costs an adopter
+   `?? []`. Not worth changing.
+
+**Deliberately left undone, and why.** `ScriptSymbolLookup` (393),
+`ScriptApiIndex` (208), `ScriptSymbolInfo` (35) and their tests are now dead in
+`CDS.OpenCvSharpWorkbench.WinForms` — but that project is `IsPackable` and
+**published**, so deleting them is a breaking change to someone else's package,
+and it would need D18 rewritten across that repo's `CLAUDE.md`,
+`docs/design-decisions.md` and `docs/playground-library-design.md`. That is its
+own milestone in its own repo, not a tail-end of this one. Noted in that repo's
+`docs/todo.md`.
 
 ---
 
@@ -264,9 +298,13 @@ chatPanel.UseStoredKey("MyApp");
     it off. That makes `ScriptChatHostPanel` the control an adopter actually drops
     in, with `ScriptChatPanel` the inner one — worth confirming when item 3 lands,
     since `AddScript` should follow the same choice.
-  - **Second gap, minor**: the host panel's status reads just `Ready.` where
-    `ScriptChatPanel` shows `Ready · {provider} · {model}`. A host-panel user
-    cannot see which provider is live. Not fixed here to keep the diff focused.
+  - ~~**Second gap, minor**: the host panel's status reads just `Ready.` where
+    `ScriptChatPanel` shows `Ready · {provider} · {model}`.~~ **Fixed 2026-08-24**
+    during the Playground migration, which turned it into a real regression for a
+    real adopter — and showed it was not confined to the host panel: the inner
+    panel's `Ready · …` was a one-off write that the next `AttachSession` (every
+    target switch, and the end of every turn) replaced with `Ready.`. See finding
+    1 in the migration notes above.
 
 - [x] **3 — `AddScript` — where "easy" actually lands.** *Done 2026-08-24.*
   122 Core + 112 WinForms tests green. The two-call quickstart is now real and is

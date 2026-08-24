@@ -112,6 +112,24 @@ public partial class ScriptChatPanel : UserControl
     public bool IsReady => _session is not null && ScriptTextProvider is not null;
 
     /// <summary>
+    /// Gets or sets what the status line says whenever the panel is idle and ready, or
+    /// <see langword="null"/> for a plain <c>Ready.</c>.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Configure"/> sets this to <c>Ready · {provider} · {model}</c>, and it is a
+    /// property rather than a one-off <c>SetStatus</c> so that the provider stays on screen —
+    /// attaching another conversation, or simply finishing a turn, used to quietly drop back to
+    /// <c>Ready.</c> and lose it. A host that builds the chat client itself, as
+    /// <see cref="ScriptChatHostPanel"/> does, sets this so its own users see the same thing.
+    /// </remarks>
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public string? ReadyStatus { get; set; }
+
+    /// <summary>What the status line reads when idle and ready.</summary>
+    private string ReadyStatusText => ReadyStatus ?? "Ready.";
+
+    /// <summary>
     /// Builds a client and a fresh session from a provider configuration, and attaches it.
     /// This is what the settings panel's applied configuration feeds into, and it is how a
     /// provider or model change takes effect without restarting the host app.
@@ -153,12 +171,14 @@ public partial class ScriptChatPanel : UserControl
             return;
         }
 
+        // Set before attaching, so the session's own status line already carries the provider
+        // rather than being corrected a moment later.
+        ReadyStatus = $"Ready · {clientOptions.Provider} · {clientOptions.ModelId}";
         AttachSession(new ScriptChatSession(client, options));
 
         // Only replace the owned client once the new one is in use, so a failure above leaves
         // the previous configuration working.
         ReplaceOwnedClient(client);
-        SetStatus($"Ready · {clientOptions.Provider} · {clientOptions.ModelId}");
         _logger.PanelConfigured(clientOptions.Provider, clientOptions.ModelId);
     }
 
@@ -185,7 +205,7 @@ public partial class ScriptChatPanel : UserControl
         }
         else
         {
-            SetStatus(ScriptTextProvider is null ? "No script source configured." : "Ready.");
+            SetStatus(ScriptTextProvider is null ? "No script source configured." : ReadyStatusText);
 
             for (var i = 0; i < session.Turns.Count; i++)
             {
@@ -217,6 +237,9 @@ public partial class ScriptChatPanel : UserControl
     /// <param name="reason">A short explanation to show the user.</param>
     public void SetUnavailable(string reason)
     {
+        // Cleared, so a provider named by an earlier Configure cannot reappear on the status line
+        // of some later session that has nothing to do with it.
+        ReadyStatus = null;
         AttachSession(null);
         SetStatus(reason);
         _logger.PanelUnavailable(reason);
@@ -305,7 +328,7 @@ public partial class ScriptChatPanel : UserControl
                 _pendingTurnIndex = _session.Turns.Count - 1;
             }
 
-            SetStatus("Ready.");
+            SetStatus(ReadyStatusText);
 
             _logger.SendCompleted(
                 stopwatch.ElapsedMilliseconds,

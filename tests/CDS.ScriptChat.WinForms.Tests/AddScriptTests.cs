@@ -52,7 +52,7 @@ public sealed class AddScriptTests
         panel.AddScript("Processing", () => "var x = 1;", _ => { }, typeof(SampleGlobals));
 
         // Order must not matter: a host is free to configure first and add scripts afterwards.
-        FindStatus(panel).Text.Should().Be("Ready.");
+        FindStatus(panel).Text.Should().StartWith("Ready · Claude · ");
     }
 
     [TestMethod]
@@ -69,7 +69,7 @@ public sealed class AddScriptTests
             CreateSessionOptions = () => new ScriptChatSessionOptions(),
         });
 
-        FindStatus(panel).Text.Should().Be("Ready.");
+        FindStatus(panel).Text.Should().StartWith("Ready · Claude · ");
     }
 
     [TestMethod]
@@ -111,7 +111,7 @@ public sealed class AddScriptTests
             () => null,
             _ => { });
 
-        FindStatus(panel).Text.Should().Be("Ready.");
+        FindStatus(panel).Text.Should().StartWith("Ready · Claude · ");
 
         // …and the assistant can actually answer from the host's API, which is the whole point.
         var options = ScriptChatSessionOptions.ForHostApi(typeof(SampleGlobals));

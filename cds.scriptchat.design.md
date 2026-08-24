@@ -22,7 +22,7 @@ and Fable.
   settings query and mutation, MCP transports, data review. Each step was
   defensible and the sum was not. Jobs 6 and 7 in `todo.features.md` are parked
   with their reasoning intact. **Read D21 and D22 before reopening any of it.**
-- **Job 5 — the adoption path** — **complete** (2026-08-24). 129 Core + 120
+- **Job 5 — the adoption path** — **complete** (2026-08-24). 129 Core + 124
   WinForms tests, solution builds clean. Adopting the library went from ~473 lines
   of adapter and wiring in the first consuming app (plus ~636 lines of Roslyn
   tooling it had to build first) to **two calls**:
@@ -41,9 +41,15 @@ and Fable.
     index and `lookup_symbol`, and wiring order no longer matters.
   - `samples/CDS.ScriptChat.SampleApp` is the worked example and the acceptance
     test — an ordinary app, not a diagnostic harness.
-  - **Not yet done, and it matters**: the OpenCvSharp Playground has not been
-    migrated onto the new API. See `todo.features.md` → "Start here". Do it
-    before the next publish.
+  - **Proved against a real adopter** (2026-08-24): the OpenCvSharp Playground
+    and its use-cases demo are migrated onto the new API, 213 net lines lighter,
+    launched and confirmed with a live client and both conversations created.
+    It found one API defect, now fixed — the status line's
+    `Ready · {provider} · {model}` was a one-off write that the next
+    `AttachSession` replaced with a plain `Ready.`, so the provider vanished on
+    every target switch and at the end of every turn, and `ScriptChatHostPanel`
+    never showed it at all. `ScriptChatPanel.ReadyStatus` replaces the one-off
+    write. Findings in `todo.features.md` → "Start here".
 - **Milestone 1** (UC1, UC3, UC4, UC6) — **complete**. All build-order steps 1–6
   done, acceptance criteria met, tests passing. Packages published as `1.0.0`
   (see `todo.packaging.md`).

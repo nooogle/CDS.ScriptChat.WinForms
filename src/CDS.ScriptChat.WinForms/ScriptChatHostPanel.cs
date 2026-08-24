@@ -380,6 +380,11 @@ public partial class ScriptChatHostPanel : UserControl
         _chatClient = client;
         previous?.Dispose();
 
+        // This panel builds the client itself, so the inner panel's own Configure — which is what
+        // normally puts the provider on the status line — never runs. Without this a host-panel
+        // user could not see which provider was live, only "Ready."
+        _chatPanel.ReadyStatus = $"Ready · {clientOptions.Provider} · {clientOptions.ModelId}";
+
         _unavailableReason = null;
         RestartConversations();
     }
