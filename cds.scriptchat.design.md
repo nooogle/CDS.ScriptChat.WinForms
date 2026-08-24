@@ -17,6 +17,33 @@ and Fable.
 
 ## Status
 
+- **Scope was narrowed on 2026-08-24 (D21): C# script chat, nothing else.**
+  Planning had drifted toward a general in-app assistant — chat with no script,
+  settings query and mutation, MCP transports, data review. Each step was
+  defensible and the sum was not. Jobs 6 and 7 in `todo.features.md` are parked
+  with their reasoning intact. **Read D21 and D22 before reopening any of it.**
+- **Job 5 — the adoption path** — **complete** (2026-08-24). 129 Core + 120
+  WinForms tests, solution builds clean. Adopting the library went from ~473 lines
+  of adapter and wiring in the first consuming app (plus ~636 lines of Roslyn
+  tooling it had to build first) to **two calls**:
+  `ScriptChatHostPanel.AddScript(name, read, write, api)` and
+  `UseStoredKey(applicationName)`. What landed:
+  - **D20** — a tool is offered to the model only when this host can answer it.
+    `lookup_symbol` was advertised even against `NullSymbolLookupProvider`, so the
+    model called it, heard "not found" every time, and concluded the host's API
+    was not real.
+  - **D22** — Roslyn ships in Core, superseding D15 for symbol lookup:
+    `RoslynSymbolResolver`, `RoslynSymbolLookupProvider`, `MetadataCompilation`,
+    `HostApiIndex`, and `ScriptChatSessionOptions.ForHostApi`.
+    `ISymbolLookupProvider` stays public for a host with its own engine.
+  - **D23** — `ScriptChatHostPanel` is the control an adopter drops in;
+    `ScriptChatPanel` is the inner one. One `Type` drives both the orientation
+    index and `lookup_symbol`, and wiring order no longer matters.
+  - `samples/CDS.ScriptChat.SampleApp` is the worked example and the acceptance
+    test — an ordinary app, not a diagnostic harness.
+  - **Not yet done, and it matters**: the OpenCvSharp Playground has not been
+    migrated onto the new API. See `todo.features.md` → "Start here". Do it
+    before the next publish.
 - **Milestone 1** (UC1, UC3, UC4, UC6) — **complete**. All build-order steps 1–6
   done, acceptance criteria met, tests passing. Packages published as `1.0.0`
   (see `todo.packaging.md`).
@@ -85,7 +112,8 @@ Three pieces, split so that no AI/SDK dependency ever leans on WinForms, no
 WinForms dependency ever leans on a specific AI provider, and nothing in the
 library leans on any particular host app's scripting stack (D15):
 
-**1. `CDS.ScriptChat.Core`** (no WinForms, no Roslyn, no editor)
+**1. `CDS.ScriptChat.Core`** (no WinForms, no editor; Roslyn since D22, for
+symbol lookup only)
 - `ScriptChatSession` — holds conversation state, sends turns, interprets results.
   Built on `Microsoft.Extensions.AI.IChatClient`, provider-agnostic.
 - `ScriptChatClientFactory` — the only place that knows Claude/OpenAI/Grok exist.
@@ -125,11 +153,14 @@ lookup_symbol(symbolName: string, containingType: string?) -> {
 ```
 
 **The library does not implement this — the host app does** (D15). `CDS.ScriptChat`
-defines `ISymbolLookupProvider`, exposes it to the model as the `lookup_symbol`
-tool, and ships a no-op implementation so the tool-calling path works before a
-host wires anything up. Where the answers come from is entirely the host's
-choice: a Roslyn `SemanticModel`, a reflection pass over loaded assemblies, a
-hand-maintained table, or a remote service.
+defines `ISymbolLookupProvider` and exposes it to the model as the
+`lookup_symbol` tool. Since D22 it also ships a working implementation —
+`RoslynSymbolLookupProvider` over the host's own assemblies, reachable in one
+call via `ScriptChatSessionOptions.ForHostApi(typeof(MyGlobals))`. A host with
+its own engine still implements the interface instead: a live editor
+`SemanticModel`, a reflection pass, a hand-maintained table, or a remote service.
+`NullSymbolLookupProvider` remains the default, and since D20 it means "there is
+no lookup here" — the tool is not advertised to the model at all.
 
 Returning `null` is an ordinary outcome meaning "not found", not an error.
 
@@ -394,6 +425,9 @@ happened.
 
 ## Build order
 
+*(Historical — the order milestone 1 was built in. Roslyn arrived later, in
+Job 5 / D22.)*
+
 1. `CDS.ScriptChat.Core` — `ScriptChatSession`, `ScriptChatClientFactory`,
    `AssistantTurnResult`, `ChatTurn`. No Roslyn, no WinForms, no editor.
 2. `ISymbolLookupProvider` interface + a no-op implementation, wire
@@ -449,7 +483,13 @@ happened.
   closer to what VS/VS Code's integrated chat can already do, once the v1
   narrow scope shows where it actually falls short in practice. Added as new
   members with default implementations so existing host implementations keep
-  compiling.
+  compiling. Note D22 raises the stakes: Core now ships `RoslynSymbolResolver`,
+  so any widening has to be implemented there as well as defined.
+- **An `AddScript` overload taking a live compilation source.** A host whose
+  editor already produces a Roslyn `Compilation` currently wires ~5 lines rather
+  than the 2 the metadata path needs. Deliberately not added speculatively — the
+  Playground migration is the test of whether it is worth it. See
+  `todo.features.md` → "Start here".
 - ~~**Multi-script host support**~~ **Done.** Real feedback from extracting the
   OpenCvSharp Playground app, parked in `todo.packaging.md` ("Not packaging —
   API feedback from a consuming host"). Shipped as `ScriptChatTarget` (Core) and

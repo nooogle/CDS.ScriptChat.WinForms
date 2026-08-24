@@ -1,9 +1,60 @@
 # TODO — Feature backlog
 
 General-purpose backlog for provider and editing-experience work. Distinct from
-`todo.packaging.md`, which tracks NuGet/CI/release mechanics.
+`todo.packaging.md`, which tracks NuGet/CI/release mechanics, and `todo.bugs.md`.
 
-Each job is independent and can be picked up in any order.
+**Scope, since 2026-08-24 (D21): this library is for C# script chat and nothing
+else.** General in-app assistants, settings mutation, MCP transports and data
+review were all considered and deliberately parked — Jobs 6 and 7 below keep the
+reasoning. Read D21 and D22 in `cds.scriptchat.design.md` before reopening any of
+it; the arguments were had properly and are recorded.
+
+---
+
+## ▶ Start here — next session
+
+**Job 5 is complete** (all six items, 2026-08-24). 129 Core + 120 WinForms tests
+green. The adoption path is now two calls; see the root `README.md` quick start.
+
+Two things follow from it, in this order:
+
+- [ ] **1. Migrate `CDS.OpenCvSharpPlayground` onto the new API.** The adjacent
+  repo at `c:\dev\nooogle\CDS.OpenCvSharpPlayground`, which is what Job 5's
+  measurements came from. **Do this before publishing** — it is the only real
+  proof the new API works for an actual adopter, and any mistake it finds is free
+  to fix now and permanent once released.
+  - Delete: both copies of `RoslynSymbolLookupProvider` (86 lines each — one in
+    `src/CDS.OpenCvSharpPlayground.App`, one in `demo/UseCasesDemo`),
+    `ScriptSymbolInfo` and its mapping, and most of `ScriptChatOrientation`
+    (185 lines). Upstream, `ScriptSymbolLookup` (393) and `ScriptApiIndex` (208)
+    in `CDS.OpenCvSharpWorkbench.WinForms` become dead.
+  - Replace the ~70 lines of key/settings/restore in `MainForm.Chat.cs` with
+    `UseStoredKey`. Note the Playground keeps provider/model in its own settings
+    file, so it wants the `UseStoredKey(applicationName, load, save)` overload.
+  - **Expected friction, worth watching for.** The Playground has a *live editor
+    compilation* (`editor.API.GetCompilationAsync`), but `AddScript`'s easy
+    overload builds a *metadata* compilation instead. So it will use
+    `new RoslynSymbolLookupProvider(ct => editor.API.GetCompilationAsync(ct), resolver)`
+    plus the session-options-factory overload of `AddScript` — about five lines,
+    not two. **If that reads badly, the answer is probably an
+    `AddScript(name, read, write, api, compilationSource, additionalTypes)`
+    overload.** Deliberately not added speculatively; let the migration decide.
+  - The resolver takes `IEnumerable<string>` rather than the workbench's
+    `ScriptEnvironment`, so the replacement is
+    `new RoslynSymbolResolver(editor.API.Environment.NamespaceNames, globalsType, componentTypes)`.
+  - Per-script orientation prose now has a convention:
+    `scriptchat.workspace.context.md` / `scriptchat.processing.context.md` beside
+    the executable, falling back to a shared `scriptchat.context.md`. That
+    replaces the Playground's hand-rolled `ReadContext`, though note the library
+    has **no embedded-resource fallback** — if the Playground relies on that,
+    decide whether to keep its own loader or add the fallback to the library.
+
+- [ ] **2. Release.** Core gained a `Microsoft.CodeAnalysis.CSharp` dependency
+  (D22) — non-breaking, but notable enough to want release notes. See
+  `todo.packaging.md` → "Next release".
+
+After those, the open work is the bug in `todo.bugs.md`, the two Known Issues
+below, and the parked jobs.
 
 ---
 
@@ -316,9 +367,20 @@ chatPanel.UseStoredKey("MyApp");
 
 ## Job 6 — Host-registered tools
 
-Today the tool list is **hardcoded**: `lookup_symbol`, `propose_script_edit` and
-`propose_script_patch`, built unconditionally in `ScriptChatSession`'s constructor
-([ScriptChatSession.cs:135-137](src/CDS.ScriptChat.Core/ScriptChatSession.cs#L135)).
+> **PARKED (D21, 2026-08-24).** Out of scope. One note if it is ever revived: if
+> the extension point is `IReadOnlyList<AIFunction>`, **MCP support comes free** —
+> the official C# MCP SDK surfaces a server's tools as `AIFunction`, so Core would
+> never need to know MCP exists. Two rules that came out of that discussion and
+> should hold: the *client* decides what needs human approval, never the server
+> (`readOnlyHint`/`destructiveHint` are advisory inputs, so gate anything not
+> explicitly read-only); and MCP clients bring their own logging pipeline, which
+> `TraceSuppressingLoggerFactory` does not cover — a new D17 leak path to close
+> before any such work lands.
+
+The tool list is built in `ScriptChatSession`'s constructor and is not
+extensible by a host. Since D20 it is conditional — `lookup_symbol` only when a
+provider can answer it — but `ScriptChatSessionOptions` still has no way to add
+a tool of its own.
 `ScriptChatSessionOptions` has no extension point, so a host cannot add a tool of
 its own. That is the single blocker for Job 7, and probably for most "chat that
 does something in my app" scenarios.
@@ -336,6 +398,13 @@ does something in my app" scenarios.
   the transcript.
 
 ## Job 7 — Chat that queries and configures application settings
+
+> **PARKED (D21, 2026-08-24).** Out of scope: this library is for C# script chat.
+> Kept in full because the use case is genuinely strong and the analysis was
+> done properly — revive it only with a real customer behind it, and expect to
+> revisit D21 rather than work around it. Note the line below about "most
+> existing apps have no script editor" is the premise D21 *cut*; the settings
+> case would have to re-argue it.
 
 **The use case.** Let an end user ask an app about its own configuration, and
 change it, in plain language — *"what's the exposure set to?"*, *"increase the
@@ -414,9 +483,10 @@ So this job depends on **Job 6**.
 - Jobs 1, 2 and 4 don't block each other, but Job 1 and Job 2 both touch
   `ScriptChatClientFactory` / `ScriptChatClientOptions` — worth sequencing
   them rather than working both in parallel branches to avoid merge friction.
-- **Jobs 5 → 6 → 7 are a chain**, in that order. Job 7 cannot start before Job 6
-  (host tools), and Job 6 is only worth much without Job 5 if something other
-  than a settings-style use case needs it.
+- ~~**Jobs 5 → 6 → 7 are a chain**~~ — **superseded by D21 (2026-08-24).** Job 5
+  shipped; Jobs 6 and 7 are parked, out of scope. The dependency between them is
+  still real if they are ever revived — Job 7 cannot start before Job 6 — but
+  neither is queued behind anything now.
 - **Job 2 is worth pulling forward for the public launch**, out of numeric order.
   "Works with a local model, no cloud key needed" removes the single biggest
   barrier to a stranger trying the library at all — and it needs no new
@@ -431,15 +501,24 @@ These jobs came out of reviewing whether the Workbench's Roslyn script tooling
 should be donated here. The full evidence lives in that repo's `docs/todo.md`;
 the parts that matter here:
 
-- **D15 was reconsidered and holds, but not for the reason usually given.** Size
-  is a weak objection: `Microsoft.CodeAnalysis.dll` is **2.96 MB** deployed
-  against the **11.90 MB** of AI SDKs `CDS.ScriptChat.Core` already ships (+25%),
-  and it has exactly one transitive dependency. The real reasons are **version
-  diamonds** (three Roslyn majors were cached on one dev machine: 4.14.0, 5.6.0,
-  5.9.0 — pinning in Core imposes that on consumers who never call a lookup) and
-  **irreversibility** (Core is live on nuget.org at `V1.1.0`; adding a dependency
-  later is non-breaking, removing one is not). A satellite package satisfies D15
-  rather than relaxing it.
+- ~~**D15 was reconsidered and holds**~~ — **reversed the next day by D22
+  (2026-08-24), after measuring what it actually cost.** The reasoning below was
+  sound about the *risks* and wrong about the *balance*: it never weighed them
+  against the ~473 lines of adapter code every adopter had to write, plus the
+  ~636 lines of Roslyn tooling they had to build first, with the 86-line adapter
+  duplicated verbatim in one repo. Both objections it raises are answered by
+  D21's narrowed scope rather than waved away — every consumer is now, by
+  definition, a scripting host that already loads Roslyn, so neither the size nor
+  the version-diamond argument applies to anyone actually being served. Roslyn
+  ships **in Core**, not in a satellite package. Original reasoning, kept because
+  it is the argument to beat if this is ever revisited:
+  - Size is a weak objection: `Microsoft.CodeAnalysis.dll` is **2.96 MB** deployed
+    against the **11.90 MB** of AI SDKs `CDS.ScriptChat.Core` already ships (+25%),
+    and it has exactly one transitive dependency. The real reasons are **version
+    diamonds** (three Roslyn majors were cached on one dev machine: 4.14.0, 5.6.0,
+    5.9.0 — pinning in Core imposes that on consumers who never call a lookup) and
+    **irreversibility** (Core is live on nuget.org at `V1.1.0`; adding a dependency
+    later is non-breaking, removing one is not).
 - **Microsoft Agent Framework was checked and is not a threat.** It overlaps the
   bottom of `ScriptChat.Core` — provider plumbing and session state, both on the
   same `Microsoft.Extensions.AI` foundation — and nothing else. Its UI
