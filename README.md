@@ -9,11 +9,13 @@
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/)
 
 **TL;DR:** A drop-in WinForms `UserControl` that lets a user chat with an LLM
-about a script they're editing. The assistant answers questions and proposes
+about a C# script they're editing. The assistant answers questions and proposes
 edits; edits always show up as a reviewable diff and never touch the buffer
-until the user clicks Accept. Not tied to any scripting engine, editor
-control, or AI provider — you supply two delegates and an API key, and it
-works with Claude or OpenAI today.
+until the user clicks Accept. **Two calls to adopt it** — point it at your
+script and name the type your scripts are written against, and it answers
+questions about *your* API using real signatures and your own XML docs, not the
+model's recall. Not tied to any scripting engine, editor control, or AI
+provider; works with Claude or OpenAI today.
 
 ![The CDS.ScriptChat test host, mid-review: a plain-TextBox editor on the left, the chat panel on the right showing a user turn and an assistant reply that proposed a one-line patch, rendered as a green/red diff with Accept edit and Reject edit enabled below it](assets/screenshot-diff-review.png)
 
@@ -50,7 +52,10 @@ does this symbol look like" against its own API surface.
   code fence, never applied silently.
 - **Look up a real symbol** from your app's own API while reasoning about the
   script (`lookup_symbol`), so suggestions use APIs and signatures that
-  actually exist instead of the model's best guess.
+  actually exist instead of the model's best guess. This works out of the box
+  from your own assemblies — you name one type and the library resolves against
+  it, XML documentation included. The tool is only offered to the model when
+  something can actually answer it (D20).
 - **Carry a multi-turn conversation**, where each accepted edit becomes the
   baseline for the next turn, and a rejected edit doesn't quietly poison the
   model's memory of what the script currently looks like. Only one proposal
@@ -70,7 +75,7 @@ ever leans on WinForms:
 
 | Package | What it is |
 |---|---|
-| [`CDS.ScriptChat.Core`](src/CDS.ScriptChat.Core/readme.md) | The provider-agnostic conversation engine. Built on `Microsoft.Extensions.AI.IChatClient`; no WinForms, no Roslyn. |
+| [`CDS.ScriptChat.Core`](src/CDS.ScriptChat.Core/readme.md) | The provider-agnostic conversation engine, plus Roslyn-backed symbol lookup so the assistant answers from your real API. Built on `Microsoft.Extensions.AI.IChatClient`; no WinForms. |
 | [`CDS.ScriptChat.WinForms`](src/CDS.ScriptChat.WinForms/readme.md) | The ready-made WinForms UI: chat panel, settings panel, DPAPI key store. |
 
 Each package's own readme (linked above) is what nuget.org shows — kept short
@@ -80,60 +85,84 @@ clean checkout.
 
 ## Quick start
 
-Add the panel to a form in the WinForms Designer (it's a standard
-`UserControl`, so it drops in and resizes like any other), then wire it up in
-code:
+Drop a `ScriptChatHostPanel` on a form in the WinForms Designer (it's a
+standard `UserControl`), then wire it up with two calls:
 
 ```csharp
-// 1. Give the panel a way to read and write your script. This is the whole
-//    editor contract — there's no interface to implement.
-_chatPanel.ScriptTextProvider = () => _scriptTextBox.Text;
-_chatPanel.ScriptTextSetter = script => _scriptTextBox.Text = script;
+// 1. Point it at your script, and name the type your scripts are written
+//    against. That one type does two jobs — see below.
+_chatPanel.AddScript(
+    name:  "Inspection",
+    read:  () => _scriptTextBox.Text,
+    write: script => _scriptTextBox.Text = script,
+    api:   typeof(ScriptGlobals));
 
-// 2. Configure it with a provider, model, and the user's own API key.
-_chatPanel.Configure(new ScriptChatClientOptions
-{
-    Provider = ScriptChatProvider.Claude,
-    ApiKey = apiKey,          // BYOK — never logged, cached, or stored by this library
-    ModelId = "claude-opus-5",
-});
+// 2. Hand it the whole API-key story: load on startup, settings dialogue,
+//    and remembering the provider and model the user chose. BYOK — the key is
+//    encrypted under the current Windows account and never logged or cached.
+_chatPanel.UseStoredKey("MyApp");
 ```
 
-That's enough for questions and diff-reviewed edits to work. For the BYOK
-onboarding flow shown in the screenshot above — provider/model dropdowns, key
-entry, a test-connection button, and persistence between runs — drop a
-`ScriptChatSettingsPanel` alongside it and feed its `ConfigurationApplied`
-event into `Configure`:
+That's the integration. The panel starts switched off with a pointer at its
+Settings button until the user enters their own key.
 
-```csharp
-_settingsPanel.KeyStore = DpapiApiKeyStore.ForApplication(appName, logger);
-_settingsPanel.ConfigurationApplied += (_, e) => _chatPanel.Configure(e.ClientOptions);
-```
+### What `api: typeof(ScriptGlobals)` buys you
 
-To let the assistant answer questions about your own API accurately, implement
-`ISymbolLookupProvider` and pass it in via `ScriptChatSessionOptions` — a
-single `LookupAsync(symbolName, containingType)` method, answered however
-suits your app (Roslyn, reflection, a hand-written table, a remote service).
-Skip it and the library falls back to a no-op provider so everything else
-still works.
+That single type is used twice, and the two uses cannot drift apart:
 
-The full worked example — including a concrete `ISymbolLookupProvider` and a
-`scriptchat.context.md` orientation file — is in
-[`samples/CDS.ScriptChat.TestHost`](samples/CDS.ScriptChat.TestHost/); it's
-the fastest way to see every wiring point in one place. Launch it with
-`--demo=patch` or `--demo=markdown` to see a seeded conversation without a
-real API key — the same fixtures used to capture the screenshot above.
+- **The orientation index.** Reflection over the type produces the list of what
+  a script can reach, which goes into the system prompt. It can't fall behind
+  your code, because it *is* your code.
+- **`lookup_symbol`.** A metadata-only Roslyn compilation over your own
+  assemblies answers the assistant's questions with real signatures and the
+  XML documentation you already wrote — so it uses APIs that exist rather than
+  ones that sound plausible.
+
+> **Set `<GenerateDocumentationFile>true</GenerateDocumentationFile>` in your
+> app's project.** Roslyn only finds an assembly's documentation when the
+> `.xml` is deployed beside the `.dll`. Without it, every lookup returns a
+> correct signature with no prose — which looks fine, and isn't. This is the
+> single easiest thing to get wrong.
+
+### Optional: a `scriptchat.context.md` beside your executable
+
+Carries the prose a generated index can't — *why* these scripts exist, and the
+conventions a proposed change should keep to. It's picked up automatically and
+placed above the index. Skip it and everything still works; the assistant just
+knows less.
+
+### The worked example
+
+[`samples/CDS.ScriptChat.SampleApp`](samples/CDS.ScriptChat.SampleApp/) is an
+ordinary app — a widget inspection station with a script editor, a documented
+domain API, and exactly the two calls above. It runs its scripts too, so you
+can see the whole loop: ask, review the diff, accept, run.
+
+[`samples/CDS.ScriptChat.TestHost`](samples/CDS.ScriptChat.TestHost/) is a
+different thing — a diagnostic harness with CSV logging and seeded
+conversations. Launch it with `--demo=patch` or `--demo=markdown` to see a
+conversation without a real API key (the fixtures behind the screenshot above).
+
+### The manual path
+
+If your host already has its own symbol engine — a live editor compilation,
+say — implement `ISymbolLookupProvider` yourself and pass it via
+`ScriptChatSessionOptions`, using the `AddScript` overload that takes a
+session-options factory. `RoslynSymbolLookupProvider` also accepts a
+`Func<CancellationToken, Task<Compilation?>>` if you have a live compilation
+but would rather not write the adapter.
 
 ## How it works
 
 ```
 ┌────────────────────────────┐
 │  Your host app             │  supplies: script get/set delegates,
-│  (any editor, any engine)  │  ISymbolLookupProvider, orientation blurb
+│  (any editor, any engine)  │  and the type your scripts are written against
 └──┬─────────────────────────┘
    │
 ┌──▼─────────────────────────┐
-│  CDS.ScriptChat.WinForms   │  ScriptChatPanel (transcript, diff/accept UI)
+│  CDS.ScriptChat.WinForms   │  ScriptChatHostPanel (AddScript, UseStoredKey)
+│                            │  ScriptChatPanel (transcript, diff/accept UI)
 │                            │  ScriptChatSettingsPanel (BYOK onboarding)
 │                            │  DpapiApiKeyStore
 └──┬─────────────────────────┘
@@ -141,6 +170,8 @@ real API key — the same fixtures used to capture the screenshot above.
 ┌──▼─────────────────────────┐
 │  CDS.ScriptChat.Core       │  ScriptChatSession (conversation, tool calls)
 │                            │  ScriptChatClientFactory (Claude / OpenAI)
+│                            │  HostApiIndex + RoslynSymbolResolver
+│                            │  MetadataCompilation (lookup_symbol)
 │                            │  built on Microsoft.Extensions.AI.IChatClient
 └────────────────────────────┘
 ```
@@ -157,9 +188,11 @@ A few decisions worth knowing before you integrate:
   the user edited the buffer while the proposal sat pending, a hunk that no
   longer matches fails with a clear message instead of silently overwriting
   that edit.
-- **Nothing use-case-specific ships in the library.** No Roslyn, no
-  Scintilla, no particular scripting engine — the script buffer is two
-  delegates, and API knowledge is an interface you implement.
+- **Nothing host-specific ships in the library.** No Scintilla, no particular
+  scripting engine, no assumption about your editor — the script buffer is two
+  delegates. Roslyn *is* included, but only to answer `lookup_symbol` out of
+  your own assemblies; `ISymbolLookupProvider` stays an interface you can
+  implement instead if you have your own engine (D22).
 - **Switching provider or model resets the conversation.** There's no
   cross-provider history carryover — each configuration change starts a
   fresh session.
@@ -179,9 +212,16 @@ Milestones 1 and 2 are complete: single- and multi-turn conversations, Q&A,
 symbol lookup, diff/accept edits, and BYOK onboarding all work end to end
 against both Claude and OpenAI. Since then, targeted patch edits
 (`propose_script_patch`) and a single continuously-scrolling transcript have
-shipped too (D18, D19). Grok, mid-session provider switching, streaming
-responses, and per-hunk accept/reject remain deliberately deferred — see
-"Future milestones" in the design doc.
+shipped (D18, D19), followed by the adoption work above — Roslyn symbol lookup
+in the box, and the two-call `AddScript`/`UseStoredKey` wiring that replaced
+roughly 470 lines of adapter code in the first consuming app (D20–D23).
+
+The scope is deliberately **C# script chat and nothing else** (D21). General
+in-app assistants, settings mutation, and MCP transports were considered and
+parked, with the reasoning kept in
+[`todo.features.md`](todo.features.md). Grok, mid-session provider switching,
+streaming responses, and per-hunk accept/reject remain deferred — see "Future
+milestones" in the design doc.
 
 ## Building from source
 

@@ -243,7 +243,8 @@ chatPanel.UseStoredKey("MyApp");
     `SetTargets` and `AddScript` now create sessions when a client already exists,
     so wiring order no longer matters. Two tests pin it.
 
-- [ ] **4 — Orientation composition.** `HostApiIndex` itself landed with item 1:
+- [x] **4 — Orientation composition.** *Done 2026-08-24.* `HostApiIndex` landed with
+  item 1; the composition and the resolver gap closed here.
   - [x] **`Describe` never listed the root type's own members** — `Describe(typeof(MyAppApi))`
     on a flat API class returned `""`, silently. Fixed: the root is now the first
     entry, which also surfaces the plain data a globals type carries (an `int`
@@ -253,12 +254,35 @@ chatPanel.UseStoredKey("MyApp");
   - [x] Facade property name is now an optional parameter defaulting to `"API"`,
     and `null` follows no facade at all.
   - [x] Dead `cref`s to `ScriptRunner<TGlobals>`, `Control`/`UserControl` etc. removed.
-  - [ ] Still to do — revisit `HostOrientationResolver`: it already does file-first loading and
-    **the only real adopter bypassed it**, hand-rolling `ReadContext` because it
-    needed per-script filenames, an embedded-resource fallback, and composition with
-    the generated index. A helper the adopter routes around is a helper that is wrong.
-  - `IScriptChatHostContext` is an interface wrapping one string property, unused by
-    the real adopter. Consider retiring it from the documented path.
+  - [x] **`HostOrientationResolver` was bypassed by the only real adopter**, which
+    hand-rolled its own `ReadContext` because it needed per-script filenames. Fixed:
+    `FileNameFor(scriptName)` and `ResolveForScript(...)` add a
+    `scriptchat.<name>.context.md` convention that falls back to the shared
+    `scriptchat.context.md`, so a host with several scripts writes one file until a
+    script actually needs its own. `AddScript` passes the script's name through
+    automatically, so this costs an adopter nothing. Composition with the generated
+    index now lives in `HostApiLookup.BuildOrientation`, which is the other half the
+    adopter was hand-writing.
+  - [x] **`IScriptChatHostContext` reviewed and deliberately kept.** It is thin — one
+    string property — but it is a legitimate way for a host to supply the blurb from
+    code rather than a file, it is public in a package already live on nuget.org, and
+    removing it would be a breaking change that buys nothing. Dropped from the
+    documented path (the readmes now lead with `ForHostApi`) rather than retired.
+    Not everything untidy is worth churning public API over.
+  - [x] **Stale `LoggerFactory` XML doc fixed** (was under "Known issues" below): it
+    still claimed `Trace` records prompt and response content, which D17 removed
+    outright. It shipped in a public package's IntelliSense telling adopters
+    something untrue about how their data is handled.
+
+- [x] **6 — Point the docs at the easy path.** *Done 2026-08-24.* Root `README.md`
+  quick start is now the two-call version, with the hand-written
+  `ISymbolLookupProvider` route demoted to "The manual path". Both package readmes
+  updated. Several statements had become false and were corrected rather than left:
+  "no Roslyn" in the Core description and the packages table (D22), and "nothing
+  use-case-specific ships in the library". The
+  `GenerateDocumentationFile` warning is called out in all three readmes and the
+  sample's `.csproj` — it is the easiest thing for an adopter to get wrong, and it
+  fails by looking like it worked.
 
 - [x] **5 — An ordinary-app sample.** *Done 2026-08-24.*
   `samples/CDS.ScriptChat.SampleApp` — a widget inspection station with a script
@@ -280,10 +304,6 @@ chatPanel.UseStoredKey("MyApp");
     `GenerateDocumentationFile`, or every lookup returns a correct signature with no
     documentation and nothing looks wrong. Called out in the sample's `.csproj`
     comment and its readme; belongs in the main README too (item 6).
-
-- [ ] **6 — Point the docs at the easy path.** README's first block is the
-  quickstart; the hand-rolled `ISymbolLookupProvider` route becomes the
-  advanced/custom-engine section rather than the only documented one.
 
 ### Parked, not deleted
 
@@ -362,17 +382,11 @@ So this job depends on **Job 6**.
 
 ## Known issues (small, not full jobs — tracked so they don't get lost)
 
-- [ ] **`ScriptChatSessionOptions.LoggerFactory`'s XML documentation contradicts
-  D17.** It still says *"At `LogLevel.Trace` this records prompt and response
-  content — the script, the user's messages, the model's replies, and any
-  proposed edit. That is deliberate…"*
-  ([ScriptChatSessionOptions.cs:40-45](src/CDS.ScriptChat.Core/ScriptChatSessionOptions.cs#L40)).
-  That capability was **removed outright** by D17 — every content-bearing
-  `[LoggerMessage]` deleted, and `TraceSuppressingLoggerFactory` closing the
-  dependency-level leak. The comment is stale in the safe direction (it warns of
-  a leak that no longer exists), but it ships in a public package's IntelliSense
-  and tells adopters something untrue about how the library handles their data.
-  Fix before any further publish.
+- [x] **`ScriptChatSessionOptions.LoggerFactory`'s XML documentation contradicted
+  D17** — it still claimed `Trace` records prompt and response content, a
+  capability D17 removed outright. *Fixed 2026-08-24* as part of Job 5 item 4;
+  it now states that no content is logged at any level and that this is enforced
+  rather than defaulted.
 
 - [ ] **`InputBoxScrollTests.MouseWheel_OverAnOverflowingInputBox_ScrollsIt` is
   flaky.** Drives the real OS mouse cursor and compares pixel bitmaps

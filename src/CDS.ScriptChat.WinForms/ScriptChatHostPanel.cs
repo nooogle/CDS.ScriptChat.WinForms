@@ -242,10 +242,12 @@ public partial class ScriptChatHostPanel : UserControl
     /// </param>
     /// <remarks>
     /// <para>
-    /// The orientation blurb is the host's own prose — from <c>scriptchat.context.md</c> beside
-    /// the executable, if it is there — followed by an index generated from
+    /// The orientation blurb is the host's own prose followed by an index generated from
     /// <paramref name="api"/> by reflection, so the list of what exists cannot fall behind the
-    /// code.
+    /// code. The prose comes from <c>scriptchat.&lt;name&gt;.context.md</c> beside the
+    /// executable if that file is deployed, falling back to a shared
+    /// <c>scriptchat.context.md</c> — so a host with several scripts writes one file until a
+    /// script actually needs its own.
     /// </para>
     /// <para>
     /// Symbol lookup resolves against a metadata-only compilation over the host's own assemblies,
@@ -269,12 +271,15 @@ public partial class ScriptChatHostPanel : UserControl
         Type api,
         params Type[] additionalTypes)
     {
+        // Checked here as well as in the overload below, so a blank name is reported against
+        // this method's own parameter rather than surfacing from the orientation lookup.
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(api);
         ArgumentNullException.ThrowIfNull(additionalTypes);
 
         // Built once, not per conversation: the orientation and the reachable API are fixed for
         // the lifetime of the host, and rebuilding would discard the deferred compilation.
-        var options = ScriptChatSessionOptions.ForHostApi(api, _loggerFactory, additionalTypes);
+        var options = ScriptChatSessionOptions.ForHostApi(api, name, _loggerFactory, additionalTypes);
 
         AddScript(name, read, write, () => options);
     }

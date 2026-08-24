@@ -1,18 +1,34 @@
 # CDS.ScriptChat.WinForms
 
-A drop-in WinForms script+chat panel: the user talks to an LLM about the script
-they are editing, and the assistant can propose edits to it.
+A drop-in WinForms script+chat panel: the user talks to an LLM about the C#
+script they are editing, and the assistant can propose edits to it.
 
-- `ScriptChatPanel` — the chat UI. It reaches the host's script buffer through
-  caller-supplied delegates, so it works with any editor control (Scintilla,
-  a plain `TextBox`, anything) and depends on none of them.
-- `ScriptChatHostPanel` — for a host with more than one script: a selector plus
-  one `ScriptChatPanel`, driving a separate conversation per `ScriptChatTarget`
-  while sharing a single chat client.
+Two calls to adopt it:
+
+```csharp
+_chatPanel.AddScript(
+    name:  "Inspection",
+    read:  () => _scriptTextBox.Text,
+    write: script => _scriptTextBox.Text = script,
+    api:   typeof(ScriptGlobals));   // drives the orientation index AND lookup_symbol
+
+_chatPanel.UseStoredKey("MyApp");    // key store, settings dialogue, and restore
+```
+
+- `ScriptChatHostPanel` — the control to drop in. `AddScript` once per script,
+  `UseStoredKey` once. It reaches the host's script buffer through
+  caller-supplied delegates, so it works with any editor control (Scintilla, a
+  plain `TextBox`, anything) and depends on none of them.
+- `ScriptChatPanel` — the inner chat UI, for a host that wants to drive
+  sessions itself.
 - `ScriptChatSettingsPanel` / `ScriptChatSettingsForm` — provider, model and API
-  key configuration, as a panel or a ready-made dialogue.
+  key configuration, as a panel or a ready-made dialogue. `UseStoredKey` wires
+  these up for you.
 - `DpapiApiKeyStore` — per-user API key storage via Windows DPAPI. Swap in your
   own via `IApiKeyStore`.
+
+> Set `<GenerateDocumentationFile>true</GenerateDocumentationFile>` in your app,
+> or `lookup_symbol` returns correct signatures with no documentation.
 
 Proposed edits — a full rewrite or a targeted find/replace patch — are shown
 as a diff and applied only when the user accepts. Only one proposal is ever

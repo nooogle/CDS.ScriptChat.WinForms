@@ -47,12 +47,19 @@ internal static class HostApiLookup
     /// prompt with detail the model mostly does not need, and <c>lookup_symbol</c> answers more
     /// accurately on demand than a snapshot can.
     /// </remarks>
-    public static string BuildOrientation(Type api, Type[] additionalTypes, ILoggerFactory? loggerFactory)
+    public static string BuildOrientation(
+        Type api,
+        Type[] additionalTypes,
+        string? scriptName,
+        ILoggerFactory? loggerFactory)
     {
-        var prose = HostOrientationResolver.Resolve(
-            hostContext: null,
-            searchDirectory: null,
-            loggerFactory?.CreateLogger(typeof(HostOrientationResolver)));
+        var logger = loggerFactory?.CreateLogger(typeof(HostOrientationResolver));
+
+        // A named script looks for its own file first and falls back to the shared one, so a
+        // host with several scripts that share a description still writes only one file.
+        var prose = scriptName is null
+            ? HostOrientationResolver.Resolve(hostContext: null, searchDirectory: null, logger)
+            : HostOrientationResolver.ResolveForScript(scriptName, searchDirectory: null, logger);
 
         var builder = new StringBuilder();
 
