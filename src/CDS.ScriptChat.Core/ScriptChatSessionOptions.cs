@@ -13,9 +13,14 @@ public sealed record ScriptChatSessionOptions
 {
     /// <summary>
     /// Gets the symbol engine backing the <c>lookup_symbol</c> tool. Defaults to
-    /// <see cref="NullSymbolLookupProvider"/>, which resolves nothing but still exercises the
-    /// tool-calling path.
+    /// <see cref="NullSymbolLookupProvider"/>, which resolves nothing.
     /// </summary>
+    /// <remarks>
+    /// While this is <see cref="NullSymbolLookupProvider"/>, <c>lookup_symbol</c> is not offered
+    /// to the model at all. Advertising a lookup that answers "not found" to everything is worse
+    /// than not having one: the model calls it, disbelieves the answer, and burns turns
+    /// concluding the host's API is not real.
+    /// </remarks>
     public ISymbolLookupProvider SymbolLookup { get; init; } = NullSymbolLookupProvider.Instance;
 
     /// <summary>

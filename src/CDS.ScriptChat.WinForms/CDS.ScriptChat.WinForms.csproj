@@ -38,4 +38,11 @@
 		<ProjectReference Include="..\CDS.ScriptChat.Core\CDS.ScriptChat.Core.csproj" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<!-- ProviderPreferenceFile is an implementation detail of UseStoredKey, but its failure
+		     paths (unreadable file, unrecognised provider, blocked path) are exactly what needs
+		     covering and none of them are reachable through the public API. -->
+		<InternalsVisibleTo Include="CDS.ScriptChat.WinForms.Tests" />
+	</ItemGroup>
+
 </Project>

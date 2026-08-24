@@ -7,8 +7,8 @@
 		<!-- Package -->
 		<IsPackable>true</IsPackable>
 		<Title>CDS ScriptChat Core</Title>
-		<Description>Provider-agnostic conversation engine for the CDS.ScriptChat script+chat panel. Built on Microsoft.Extensions.AI IChatClient; no WinForms or Roslyn dependency.</Description>
-		<PackageTags>ai;chat;scripting;claude;openai;llm</PackageTags>
+		<Description>Provider-agnostic conversation engine for the CDS.ScriptChat script+chat panel. Built on Microsoft.Extensions.AI IChatClient, with Roslyn-backed symbol lookup so the assistant answers from your real API rather than recall. No WinForms dependency.</Description>
+		<PackageTags>ai;chat;scripting;roslyn;claude;openai;llm</PackageTags>
 		<PackageReadmeFile>readme.md</PackageReadmeFile>
 		<PackageIcon>icon.png</PackageIcon>
 	</PropertyGroup>
@@ -22,6 +22,10 @@
 
 	<ItemGroup>
 		<PackageReference Include="Anthropic" Version="12.42.0" />
+		<!-- D22. CSharp rather than Common: MetadataCompilation needs CSharpCompilation.Create,
+		     and Common comes in transitively for the resolver. Version matches the one the
+		     consuming scripting hosts already load, so no diamond is introduced. -->
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
 		<PackageReference Include="Microsoft.Extensions.AI" Version="10.9.0" />
 		<PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.9.0" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />

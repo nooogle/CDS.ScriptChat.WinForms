@@ -83,6 +83,10 @@ public partial class ScriptChatHostPanel
             // Owned rather than any single session's, because Configure builds one client shared
             // by every target's session rather than letting ScriptChatPanel build its own.
             _chatClient?.Dispose();
+
+            // Kept for the session by UseStoredKey rather than created per use, so it remembers
+            // the provider and model the user picked; nothing else disposes it.
+            _settingsForm?.Dispose();
         }
 
         base.Dispose(disposing);

@@ -31,6 +31,17 @@ public partial class ScriptChatHostPanel : UserControl
     private ILoggerFactory? _loggerFactory;
 
     /// <summary>
+    /// The settings dialogue <see cref="UseStoredKey(string)"/> owns, created on first use and
+    /// kept for the session — the panel exposes no way to preselect a provider, so a fresh
+    /// instance would always open on its defaults and silently switch a user who had chosen
+    /// something else.
+    /// </summary>
+    private ScriptChatSettingsForm? _settingsForm;
+
+    private Func<ScriptChatProviderPreference?>? _loadPreference;
+    private Action<ScriptChatProviderPreference>? _savePreference;
+
+    /// <summary>
     /// Why the feature is switched off, or <see langword="null"/> when it is configured. Held so
     /// that switching target re-shows the reason rather than silently reverting to "Not
     /// configured."
@@ -73,6 +84,113 @@ public partial class ScriptChatHostPanel : UserControl
             _loggerFactory = value;
             _chatPanel.LoggerFactory = value;
         }
+    }
+
+    /// <summary>
+    /// Gets where API keys are kept, once <see cref="UseStoredKey(string)"/> has been called.
+    /// <see langword="null"/> when the host manages keys itself.
+    /// </summary>
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public IApiKeyStore? ApiKeyStore { get; private set; }
+
+    /// <summary>
+    /// Takes over the whole API-key story: loads the user's stored key on startup, opens the
+    /// settings dialogue when they ask for it, and remembers the provider and model they choose.
+    /// </summary>
+    /// <param name="applicationName">
+    /// The host application's name, used to keep its keys and preferences separate from other
+    /// apps that embed this panel.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// This is the one-line replacement for the load-key/show-settings/persist-choice sequence
+    /// every host previously wrote by hand. Call it after <see cref="SetTargets"/>. Bring your
+    /// own key: nothing ships with the app, and the panel stays switched off with a pointer at
+    /// the settings dialogue until the user supplies one (D3).
+    /// </para>
+    /// <para>
+    /// The provider and model are remembered in a small file beside the encrypted key store. A
+    /// host that would rather keep them in its own settings uses the overload that takes a
+    /// load/save pair.
+    /// </para>
+    /// <para>
+    /// This subscribes to <see cref="SettingsRequested"/> and shows its own dialogue. A host
+    /// that wants a different settings experience should not call this.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="applicationName"/> is empty or whitespace.</exception>
+    public void UseStoredKey(string applicationName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(applicationName);
+
+        var file = ProviderPreferenceFile.ForApplication(applicationName);
+        UseStoredKey(applicationName, file.Load, file.Save);
+    }
+
+    /// <summary>
+    /// Takes over the API-key story, but leaves the host to persist which provider and model the
+    /// user chose — for an app that already has a settings file of its own.
+    /// </summary>
+    /// <param name="applicationName">The host application's name, scoping the encrypted key store.</param>
+    /// <param name="loadPreference">
+    /// Returns the provider and model last applied, or <see langword="null"/> for none — in which
+    /// case the panel starts on <see cref="ScriptChatProvider.Claude"/>.
+    /// </param>
+    /// <param name="savePreference">
+    /// Records the provider and model each time the user applies a configuration. Never receives
+    /// the API key.
+    /// </param>
+    /// <exception cref="ArgumentException"><paramref name="applicationName"/> is empty or whitespace.</exception>
+    /// <exception cref="ArgumentNullException">Either delegate is <see langword="null"/>.</exception>
+    public void UseStoredKey(
+        string applicationName,
+        Func<ScriptChatProviderPreference?> loadPreference,
+        Action<ScriptChatProviderPreference> savePreference)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(applicationName);
+
+        UseStoredKey(
+            DpapiApiKeyStore.ForApplication(
+                applicationName,
+                _loggerFactory?.CreateLogger(typeof(DpapiApiKeyStore))),
+            loadPreference,
+            savePreference);
+    }
+
+    /// <summary>
+    /// Takes over the API-key story over a key store the host supplies — for an app that keeps
+    /// keys somewhere other than the default per-user location, and for tests.
+    /// </summary>
+    /// <param name="keyStore">Where API keys are kept between sessions.</param>
+    /// <param name="loadPreference">
+    /// Returns the provider and model last applied, or <see langword="null"/> for none — in which
+    /// case the panel starts on <see cref="ScriptChatProvider.Claude"/>.
+    /// </param>
+    /// <param name="savePreference">
+    /// Records the provider and model each time the user applies a configuration. Never receives
+    /// the API key.
+    /// </param>
+    /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
+    public void UseStoredKey(
+        IApiKeyStore keyStore,
+        Func<ScriptChatProviderPreference?> loadPreference,
+        Action<ScriptChatProviderPreference> savePreference)
+    {
+        ArgumentNullException.ThrowIfNull(keyStore);
+        ArgumentNullException.ThrowIfNull(loadPreference);
+        ArgumentNullException.ThrowIfNull(savePreference);
+
+        _loadPreference = loadPreference;
+        _savePreference = savePreference;
+        ApiKeyStore = keyStore;
+
+        // Unsubscribed first so calling this twice — a host reconfiguring, or a test — does not
+        // open two dialogues on one click.
+        SettingsRequested -= OnStoredKeySettingsRequested;
+        SettingsRequested += OnStoredKeySettingsRequested;
+
+        RestoreStoredConfiguration();
     }
 
     /// <summary>Gets the target the selector is currently on.</summary>
@@ -187,6 +305,78 @@ public partial class ScriptChatHostPanel : UserControl
         previous?.Dispose();
 
         ShowSelectedTarget();
+    }
+
+    /// <summary>
+    /// Configures the panel from the stored key for the remembered provider, or switches it off
+    /// with a pointer at the settings dialogue when there is no usable key.
+    /// </summary>
+    private void RestoreStoredConfiguration()
+    {
+        if (ApiKeyStore is null || _loadPreference is null)
+        {
+            return;
+        }
+
+        var preference = _loadPreference() ?? new ScriptChatProviderPreference(ScriptChatProvider.Claude, null);
+
+        string? apiKey;
+        try
+        {
+            apiKey = ApiKeyStore.Load(preference.Provider);
+        }
+        catch (Exception exception) when (exception is IOException
+            or UnauthorizedAccessException
+            or System.Security.Cryptography.CryptographicException)
+        {
+            // A key file that exists but cannot be read is worth saying out loud: silently
+            // prompting for a key the user believes they already entered is baffling.
+            SetUnavailable("The stored API key could not be read. Choose Settings… to enter it again.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            SetUnavailable("No API key yet. Choose Settings… to enter your own.");
+            return;
+        }
+
+        Configure(new ScriptChatClientOptions
+        {
+            Provider = preference.Provider,
+            ApiKey = apiKey,
+            ModelId = string.IsNullOrWhiteSpace(preference.ModelId)
+                ? ScriptChatModels.DefaultForProvider(preference.Provider)
+                : preference.ModelId,
+        });
+    }
+
+    /// <summary>Opens the settings dialogue this panel owns, creating it on first use.</summary>
+    private void OnStoredKeySettingsRequested(object? sender, EventArgs e)
+    {
+        if (_settingsForm is null)
+        {
+            // LoggerFactory before KeyStore, so the store's own load is logged as well.
+            _settingsForm = new ScriptChatSettingsForm
+            {
+                LoggerFactory = _loggerFactory,
+                KeyStore = ApiKeyStore,
+            };
+
+            _settingsForm.ConfigurationApplied += OnStoredKeyConfigurationApplied;
+        }
+
+        _settingsForm.ShowDialog(this);
+    }
+
+    private void OnStoredKeyConfigurationApplied(object? sender, ScriptChatConfigurationEventArgs e)
+    {
+        // Provider and model only. The key stays in the store the settings panel wrote it to,
+        // and never passes through the preference delegates (D3).
+        _savePreference?.Invoke(
+            new ScriptChatProviderPreference(e.ClientOptions.Provider, e.ClientOptions.ModelId));
+
+        Configure(e.ClientOptions);
     }
 
     /// <summary>

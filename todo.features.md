@@ -73,50 +73,278 @@ consuming host". This job is about scoping and landing that.
 - [ ] Update `cds.scriptchat.design.md` once this lands — this is currently
   listed under "Future milestones", not a formal `D`-numbered decision yet.
 
-## Job 3 — Diff-based script edits (not full-file replacement) — Done
 
-Shipped as D19 in `cds.scriptchat.design.md`. Checked what Claude Code's
-`Edit` tool and GitHub Copilot's `replace_string_in_file` tool actually do
-first, per the session that did this work — both use anchored find-and-replace
-(`{oldText, newText}`), not line numbers or unified-diff text, which resolved
-the reconciliation question below for free (no line numbers, nothing to
-drift).
 
-- [x] Diff representation: anchored find-and-replace hunks
-  (`ScriptEditHunk { OldText, NewText }` in
-  [ScriptEditHunk.cs](src/CDS.ScriptChat.Core/ScriptEditHunk.cs)), matching
-  Claude Code/Copilot precedent — not unified diff text, not
-  `{StartLine, EndLine, ReplacementText}` ranges.
-- [x] New sibling tool `propose_script_patch`, alongside the unchanged
-  `propose_script_edit` (full-replacement stays the fallback for large
-  rewrites). See `ScriptChatSession.ProposeScriptPatch`.
-- [x] Partial acceptance in the UI: **deliberately out of scope for this
-  milestone** — a patch's hunks are accepted or rejected together via the
-  single permanent Accept/Reject bar from D18. Per-hunk accept/reject
-  remains a real future milestone if patches see enough hunk-count in
-  practice to want it.
-- [x] Reconciliation when a hunk no longer cleanly applies: fails closed with
-  a clear error (`ScriptPatchApplyException`, via
-  [ScriptPatchApplier.cs](src/CDS.ScriptChat.Core/ScriptPatchApplier.cs)) —
-  not a fuzzy/context-based re-anchor. Checked twice: once inside
-  `propose_script_patch` itself (so the model can retry within the same turn
-  on a bad anchor), again on Accept against a fresh read of the buffer
-  (catches drift if the user edited the buffer while the proposal sat
-  pending).
-- [x] Multi-turn disposition reconciliation: generalised, not duplicated —
-  `SetEditDisposition`'s frozen-tool-result rewrite already worked from a
-  captured `CallId` regardless of which tool produced it, so patch turns get
-  the same UC2 bookkeeping as full-replacement turns for free.
-- [x] Tests: `ScriptPatchApplierTests` (pure apply-logic unit tests),
-  `ScriptChatSessionTests` (capture, rejection, disposition reconciliation),
-  `PatchAcceptanceTests` (WinForms panel — accept against a changed buffer,
-  reject, hunk-no-longer-matches-stays-pending).
-- [x] `cds.scriptchat.design.md` updated: D19 added, D13 marked superseded,
-  the "Line-level diffs" future-milestone entry marked done.
+## Job 4 — Multi-modal input (images alongside text)
+
+`Microsoft.Extensions.AI.ChatMessage.Contents` is already `IList<AIContent>`
+(`TextContent`, `DataContent`, `UriContent`, …), so `IChatClient` (D2) already
+normalizes image input across providers — this is additive, not a new
+abstraction. `SendAsync` currently only accepts `string userMessage` and
+always builds a single-`TextContent` `ChatMessage`
+([ScriptChatSession.cs:212](src/CDS.ScriptChat.Core/ScriptChatSession.cs#L212)).
+
+- [ ] Add an overload/parameter to `SendAsync` (e.g. an optional
+  `IReadOnlyList<DataContent>? attachments`) rather than changing the
+  existing string signature — keep the common text-only path unchanged.
+- [ ] Confirm which providers/models Anthropic/OpenAI/Grok support for image
+  input today and what happens (clear error, not silent drop) if a host sends
+  an image to a model that doesn't support it.
+- [ ] D17 applies unchanged: image bytes are content like any prompt/script —
+  never logged, cached, or persisted; only passed through the direct provider
+  SDK call. No new exception needed, just extend the existing discipline to
+  the new content type.
+- [ ] Host-side responsibility (D15): the library takes image bytes/URI via
+  the new parameter; it does not know how a host picks or produces an image
+  (file dialog, clipboard paste, screenshot, etc.) — that stays out of the
+  library.
+- [ ] WinForms UI: an attach-image affordance in the chat panel (Designer-based
+  per D14), plus a way to show what's attached to a pending turn.
+- [ ] Tests: `ScriptChatSessionTests` coverage for a turn with an attachment
+  (history shape sent to `IChatClient`), and a WinForms test for the attach
+  affordance if one is added.
+- [ ] Update `cds.scriptchat.design.md` (new `D`-numbered decision) once this
+  lands.
+
+## Job 5 — Make adoption easy for a host that has C# scripts *(the current milestone)*
+
+**The goal.** An existing WinForms app with a C# script editor and some API types
+should get a working AI script assistant in **two calls and no adapter classes**.
+Everything below is measured against that, not against internal tidiness.
+
+**Scope (D21).** C# script chat only. Not general chat, not settings, not MCP, not
+data review. Jobs 6 and 7 are parked below with their reasoning intact.
+
+### The measured baseline (2026-08-24)
+
+What the OpenCvSharp Playground — the **best case**, since the workbench had already
+built the Roslyn tooling — actually writes to consume this library:
+
+| File | Lines |
+|---|---|
+| `ScriptChatOrientation.cs` | 185 |
+| `RoslynSymbolLookupProvider.cs` | 86 — **duplicated verbatim in `demo/UseCasesDemo`** |
+| `MainForm.Chat.cs` (chat wiring only) | 202 |
+| **Adopter total** | **~473** |
+| Prerequisite tooling built first: `ScriptSymbolLookup` 393 + `ScriptApiIndex` 208 + `ScriptSymbolInfo` 35 | 636 |
+
+~1,100 lines, plus two markdown context files. The adapter's own doc comment names
+the problem: *"This adapter is the entire cost of choosing your own chat library."*
+
+### Target quickstart
+
+Design backwards from this. If it is the README's first code block, the job is done:
+
+```csharp
+// One Type drives BOTH the orientation index and lookup_symbol, so what the model
+// is told exists and what it can ask about cannot drift apart.
+chatPanel.AddScript(
+    name:  "Processing",
+    read:  () => _scriptBox.Text,
+    write: text => _scriptBox.Text = text,
+    api:   typeof(ProcessingGlobals));
+
+// Key store + settings dialogue + restore-on-startup, in one line.
+chatPanel.UseStoredKey("MyApp");
+```
+
+---
+
+- [x] **1 — Roslyn in the box (D22).** *Done 2026-08-24.* `Microsoft.CodeAnalysis.CSharp`
+  5.9.0 added to Core — the same version the consuming scripting hosts already load,
+  so no diamond. 114 Core + 87 WinForms tests green, solution builds with 0 warnings.
+  Landed: `RoslynSymbolResolver`, `RoslynSymbolLookupProvider`,
+  `MetadataCompilation`, `HostApiIndex`, `SymbolLookedUpEventArgs`, and one piece
+  that was not planned — see below.
+  - **`XmlFileDocumentationProvider` (unplanned).** Roslyn's own
+    `XmlDocumentationProvider.CreateFromFile` — which the plan named — lives in
+    `Microsoft.CodeAnalysis.Workspaces`, not in Common or CSharp. Taking the whole
+    Workspaces package for one class was the wrong trade on a package a host adopts
+    purely to answer `lookup_symbol`, so Core carries a ~50-line
+    `DocumentationProvider` of its own instead. Covered by
+    `MetadataCompilationTests.FromTypes_AttachesXmlDocumentation`, which is the test
+    that would have caught the silent no-documentation failure.
+  - **`HostApiIndex` was pulled forward from item 4**, because the resolver needs
+    `ScriptFacingTypes` to know which types to search a bare member name on. Its
+    flat-API bug and the hardcoded `"API"` facade name are both fixed and pinned by
+    tests; the rest of item 4 (orientation composition) is untouched.
+  - **Migration note for the Playground**: its adapter took a
+    `ScriptEnvironment`; the shipped resolver takes `IEnumerable<string>` instead,
+    so `new RoslynSymbolResolver(editor.API.Environment.NamespaceNames, globalsType,
+    componentTypes)` is the replacement. `ScriptSymbolInfo` and both copies of
+    `RoslynSymbolLookupProvider` can then be deleted.
+  - Original plan, kept for reference:
+  - `RoslynSymbolResolver` — the 393-line resolver (`ScriptSymbolLookup.cs`):
+    metadata arity for generics, namespace-prefix candidates, inheritance walk,
+    `cref` resolution, doc flattening. Must return `SymbolLookupResult` **directly**
+    — `ScriptSymbolInfo` is a four-property twin of it and gets deleted rather than
+    moved, along with every mapping of it.
+  - `RoslynSymbolLookupProvider : ISymbolLookupProvider` — the adapter both existing
+    consumers hand-wrote. Two overloads: `Func<CancellationToken, Task<Compilation?>>`
+    for a live editor, and a plain `Compilation` for a host whose compilation is static.
+  - `MetadataCompilation.FromTypes(...)` / `.FromAssemblies(...)` — the path for a
+    host that runs scripts but never exposes a Roslyn `Compilation` (e.g. plain
+    `CSharpScript.EvaluateAsync`). Carries the non-obvious part: XML docs must be
+    attached explicitly via `XmlDocumentationProvider.CreateFromFile`, because
+    Roslyn does not look for the `.xml` on its own. Miss it and every lookup returns
+    a correct signature with no documentation.
+  - `ISymbolLookupProvider` stays public and unchanged — a host with its own engine
+    still implements it. The shipped provider is the answer for everyone else.
+  - Tests: port `ScriptSymbolLookupTests` (143 lines) from the donor repo.
+
+- [x] **2 — `UseStoredKey` — the boilerplate nobody was tracking.** *Done 2026-08-24.*
+  ~70 lines of load-key / show-settings / persist-choice replaced by one call on
+  `ScriptChatHostPanel`. 105 WinForms tests green.
+  - Three overloads, narrowing as the host needs more control:
+    `UseStoredKey("MyApp")` (DPAPI store + preferences in a file beside it — the
+    whole story, one line); `UseStoredKey("MyApp", load, save)` for a host that
+    keeps provider/model in its own settings file; and
+    `UseStoredKey(IApiKeyStore, load, save)` for a host with its own key store.
+  - `ScriptChatProviderPreference(Provider, ModelId)` is the public record the
+    load/save pair trades in. It carries **no key** — that stays in `IApiKeyStore`
+    (D3), and the internal `ProviderPreferenceFile` never sees one.
+  - `ProviderPreferenceFile` uses plain `key=value`, not JSON: two values do not
+    justify a serialiser, and it avoids reflection-serialisation trimming warnings
+    in a library. Every failure path degrades to "no preference recorded" — falling
+    back to the default provider is survivable, refusing to open the panel is not.
+  - New `ApiKeyStore` property so a host can still reach the store.
+  - **Known gap, deliberate**: this is on `ScriptChatHostPanel` only, because
+    `ScriptChatPanel` has no settings button and so no `SettingsRequested` to hang
+    it off. That makes `ScriptChatHostPanel` the control an adopter actually drops
+    in, with `ScriptChatPanel` the inner one — worth confirming when item 3 lands,
+    since `AddScript` should follow the same choice.
+  - **Second gap, minor**: the host panel's status reads just `Ready.` where
+    `ScriptChatPanel` shows `Ready · {provider} · {model}`. A host-panel user
+    cannot see which provider is live. Not fixed here to keep the diff focused.
+
+- [ ] **3 — `AddScript` — where "easy" actually lands.** A façade over
+  `SetTargets` + `ScriptChatSessionOptions` + orientation + lookup. `api: typeof(T)`
+  internally does `HostApiIndex.Describe` for the blurb and `MetadataCompilation`
+  + `RoslynSymbolResolver` for lookup; an advanced overload takes a live
+  `Func<CancellationToken, Task<Compilation?>>` instead.
+  - Review `ScriptChatTarget.CreateSessionOptions` while here. It is a
+    `Func<ScriptChatSessionOptions>` **solely** because the Playground's orientation
+    snapshots the counterpart script at conversation start. That is one host's
+    requirement sitting in the core API, which every other adopter must understand
+    before discovering it is irrelevant to them. Keep the capability, stop making it
+    the default shape.
+
+- [ ] **4 — Orientation composition.** `HostApiIndex` itself landed with item 1:
+  - [x] **`Describe` never listed the root type's own members** — `Describe(typeof(MyAppApi))`
+    on a flat API class returned `""`, silently. Fixed: the root is now the first
+    entry, which also surfaces the plain data a globals type carries (an `int`
+    threshold) that nothing else in the walk mentioned. Its facade is deliberately
+    *not* followed at the root, so the property walk still labels it `API` — what a
+    script author types — rather than `MyGlobals.API`.
+  - [x] Facade property name is now an optional parameter defaulting to `"API"`,
+    and `null` follows no facade at all.
+  - [x] Dead `cref`s to `ScriptRunner<TGlobals>`, `Control`/`UserControl` etc. removed.
+  - [ ] Still to do — revisit `HostOrientationResolver`: it already does file-first loading and
+    **the only real adopter bypassed it**, hand-rolling `ReadContext` because it
+    needed per-script filenames, an embedded-resource fallback, and composition with
+    the generated index. A helper the adopter routes around is a helper that is wrong.
+  - `IScriptChatHostContext` is an interface wrapping one string property, unused by
+    the real adopter. Consider retiring it from the documented path.
+
+- [ ] **5 — An ordinary-app sample, written first.** Not a step so much as the
+  acceptance test for items 1–4: **write the sample as the target, then make it
+  compile.** If the sample isn't short, the API isn't finished.
+  `CDS.ScriptChat.TestHost` cannot serve this — it is a diagnostic harness with an
+  echo client, demo modes and CSV logging, not a template. Wanted: a small WinForms
+  app with a script `TextBox`, a domain API, and the two-call wiring above.
+
+- [ ] **6 — Point the docs at the easy path.** README's first block is the
+  quickstart; the hand-rolled `ISymbolLookupProvider` route becomes the
+  advanced/custom-engine section rather than the only documented one.
+
+### Parked, not deleted
+
+- **Job 6 (host-registered tools)** and **Job 7 (settings chat)** — below, with
+  evidence. Out of scope per D21; revisit only with a real customer.
+- **Job 1 (Gemini)**, **Job 4 (multi-modal)** — no current need.
+- **Job 2 (local/self-hosted models)** — parked, but it is the cheapest route to a
+  demo a stranger can run without a cloud key, and the only answer if inspection or
+  customer data must not leave site.
+
+## Job 6 — Host-registered tools
+
+Today the tool list is **hardcoded**: `lookup_symbol`, `propose_script_edit` and
+`propose_script_patch`, built unconditionally in `ScriptChatSession`'s constructor
+([ScriptChatSession.cs:135-137](src/CDS.ScriptChat.Core/ScriptChatSession.cs#L135)).
+`ScriptChatSessionOptions` has no extension point, so a host cannot add a tool of
+its own. That is the single blocker for Job 7, and probably for most "chat that
+does something in my app" scenarios.
+
+- [ ] Add host-supplied tools to `ScriptChatSessionOptions` — most naturally a
+  collection of `Microsoft.Extensions.AI.AIFunction`, since that is what the
+  session already builds internally and it keeps D2's "the abstraction is
+  `Microsoft.Extensions.AI`" rule intact.
+- [ ] Decide whether host tools can be *mutating*, and if so what the approval
+  story is. D5's principle — a change is proposed, shown, and requires explicit
+  accept before it takes effect — should extend to host tools rather than being
+  bypassed by them. A read-only tool needs no gate; a write does.
+- [ ] D17 applies unchanged: tool arguments and results are content. Never logged.
+- [ ] Tests: a host tool is offered to the model, invoked, and its result reaches
+  the transcript.
+
+## Job 7 — Chat that queries and configures application settings
+
+**The use case.** Let an end user ask an app about its own configuration, and
+change it, in plain language — *"what's the exposure set to?"*, *"increase the
+blob-detection threshold a bit"*, *"why is this camera returning dark frames?"*.
+Aimed squarely at **complex vision systems**, where the settings surface is large,
+interdependent and unapproachable, and where the person who needs to change a
+setting is often not the person who understands the settings dialogue.
+
+**Why this is a good fit for this library specifically.** An app's settings object
+*is* a host API — `HostApiIndex.Describe(typeof(AppSettings))` describes it with
+no extra work, and `MetadataCompilation.FromTypes(typeof(AppSettings))` answers
+`lookup_symbol` about it including the XML documentation already written on each
+property. So Job 5 delivers the *querying* half almost for free, with no script
+editor anywhere in the picture. This is the strongest validation of Job 5's
+"most existing apps have no script editor" premise.
+
+**What is genuinely missing is the acting half.** Reading settings is a lookup;
+*changing* one is not, and the library's only mutation mechanism today is
+`propose_script_edit` — script-text-shaped, and useless for "set property X to Y".
+So this job depends on **Job 6**.
+
+- [ ] Depends on Job 6 (host-registered tools). Don't start before it.
+- [ ] Decide the tool shape: a generic `get_setting` / `set_setting` pair over a
+  host-supplied settings object, versus letting the host register one tool per
+  meaningful operation. The generic pair is less work for an adopter (which is
+  the whole point) but gives the model a much wider blast radius.
+- [ ] **Safety is the hard part, not the plumbing.** In an industrial vision
+  system a wrong setting can quietly invalidate inspection results rather than
+  failing loudly. At minimum: a read-only mode that is the default; explicit
+  human accept for every write (D5's principle, not a bypass); a clear record of
+  what changed, from what, to what.
+- [ ] Consider validation and range awareness — a settings property often has a
+  legal range the model can't infer from its type. Worth checking whether
+  `[Range]`/`[Description]` annotations or similar can feed the index and the
+  tool's schema, since an adopter has often already written them.
+- [ ] Consider an undo/revert affordance for a settings change made through chat.
+- [ ] Audit trail: who changed what, when, via chat. Likely a hard requirement
+  for regulated or validated vision installations, and cheaper to design in than
+  to retrofit.
+- [ ] Sample: extend Job 5's ordinary-app sample with a settings object, so the
+  "query and configure" story is demonstrated rather than described.
 
 ---
 
 ## Known issues (small, not full jobs — tracked so they don't get lost)
+
+- [ ] **`ScriptChatSessionOptions.LoggerFactory`'s XML documentation contradicts
+  D17.** It still says *"At `LogLevel.Trace` this records prompt and response
+  content — the script, the user's messages, the model's replies, and any
+  proposed edit. That is deliberate…"*
+  ([ScriptChatSessionOptions.cs:40-45](src/CDS.ScriptChat.Core/ScriptChatSessionOptions.cs#L40)).
+  That capability was **removed outright** by D17 — every content-bearing
+  `[LoggerMessage]` deleted, and `TraceSuppressingLoggerFactory` closing the
+  dependency-level leak. The comment is stale in the safe direction (it warns of
+  a leak that no longer exists), but it ships in a public package's IntelliSense
+  and tells adopters something untrue about how the library handles their data.
+  Fix before any further publish.
 
 - [ ] **`InputBoxScrollTests.MouseWheel_OverAnOverflowingInputBox_ScrollsIt` is
   flaky.** Drives the real OS mouse cursor and compares pixel bitmaps
@@ -141,8 +369,40 @@ drift).
 
 ## Notes
 
-- None of these three jobs block each other, but Job 1 and Job 2 both touch
+- Jobs 1, 2 and 4 don't block each other, but Job 1 and Job 2 both touch
   `ScriptChatClientFactory` / `ScriptChatClientOptions` — worth sequencing
   them rather than working both in parallel branches to avoid merge friction.
+- **Jobs 5 → 6 → 7 are a chain**, in that order. Job 7 cannot start before Job 6
+  (host tools), and Job 6 is only worth much without Job 5 if something other
+  than a settings-style use case needs it.
+- **Job 2 is worth pulling forward for the public launch**, out of numeric order.
+  "Works with a local model, no cloud key needed" removes the single biggest
+  barrier to a stranger trying the library at all — and it needs no new
+  framework, just a base-URL override on the `Microsoft.Extensions.AI` path
+  already in place.
 - Per the "one milestone per session" project rule, each job (or a sensible
   sub-slice of one) should be its own session rather than mixed together.
+
+## Context for jobs 5–7 (from the OpenCvSharp Workbench review, 2026-08-23)
+
+These jobs came out of reviewing whether the Workbench's Roslyn script tooling
+should be donated here. The full evidence lives in that repo's `docs/todo.md`;
+the parts that matter here:
+
+- **D15 was reconsidered and holds, but not for the reason usually given.** Size
+  is a weak objection: `Microsoft.CodeAnalysis.dll` is **2.96 MB** deployed
+  against the **11.90 MB** of AI SDKs `CDS.ScriptChat.Core` already ships (+25%),
+  and it has exactly one transitive dependency. The real reasons are **version
+  diamonds** (three Roslyn majors were cached on one dev machine: 4.14.0, 5.6.0,
+  5.9.0 — pinning in Core imposes that on consumers who never call a lookup) and
+  **irreversibility** (Core is live on nuget.org at `V1.1.0`; adding a dependency
+  later is non-breaking, removing one is not). A satellite package satisfies D15
+  rather than relaxing it.
+- **Microsoft Agent Framework was checked and is not a threat.** It overlaps the
+  bottom of `ScriptChat.Core` — provider plumbing and session state, both on the
+  same `Microsoft.Extensions.AI` foundation — and nothing else. Its UI
+  integrations (AG-UI, ChatKit, DevUI) are **all web**: no WinForms, no WPF, no
+  code-editor or C# code-intelligence story anywhere. Its **CodeAct** is the
+  inverse premise — agent-authored throwaway code in a sandbox, versus this
+  library's human-authored artifact that the user reviews and accepts. Worth
+  knowing; nothing to act on.

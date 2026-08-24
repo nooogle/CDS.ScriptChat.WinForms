@@ -4,6 +4,12 @@
 		<TargetFramework>net10.0</TargetFramework>
 		<IsPackable>false</IsPackable>
 
+		<!-- The Roslyn lookup tests resolve documentation out of this assembly's own .xml file,
+		     which is the only way to prove XML docs actually reach the model. CS1591 is off
+		     because these are test fixtures, not a documented public API. -->
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<NoWarn>$(NoWarn);CS1591</NoWarn>
+
 		<!-- Microsoft.Testing.Platform (MTP) — run with `dotnet run`, not `dotnet test` -->
 		<OutputType>Exe</OutputType>
 		<EnableMSTestRunner>true</EnableMSTestRunner>
