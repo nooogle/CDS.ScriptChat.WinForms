@@ -217,17 +217,31 @@ chatPanel.UseStoredKey("MyApp");
     `ScriptChatPanel` shows `Ready · {provider} · {model}`. A host-panel user
     cannot see which provider is live. Not fixed here to keep the diff focused.
 
-- [ ] **3 — `AddScript` — where "easy" actually lands.** A façade over
-  `SetTargets` + `ScriptChatSessionOptions` + orientation + lookup. `api: typeof(T)`
-  internally does `HostApiIndex.Describe` for the blurb and `MetadataCompilation`
-  + `RoslynSymbolResolver` for lookup; an advanced overload takes a live
-  `Func<CancellationToken, Task<Compilation?>>` instead.
-  - Review `ScriptChatTarget.CreateSessionOptions` while here. It is a
-    `Func<ScriptChatSessionOptions>` **solely** because the Playground's orientation
-    snapshots the counterpart script at conversation start. That is one host's
-    requirement sitting in the core API, which every other adopter must understand
-    before discovering it is irrelevant to them. Keep the capability, stop making it
-    the default shape.
+- [x] **3 — `AddScript` — where "easy" actually lands.** *Done 2026-08-24.*
+  122 Core + 112 WinForms tests green. The two-call quickstart is now real and is
+  pinned by `AddScriptTests.Quickstart_TwoCalls_ProducesAWorkingPanel`, so it cannot
+  quietly stop being true.
+  - `ScriptChatHostPanel.AddScript(name, read, write, api, additionalTypes)` is the
+    easy path; `AddScript(name, read, write, createSessionOptions)` keeps the
+    factory shape for a host that needs it (the Playground's counterpart-script
+    snapshot). The capability stays, it is just no longer the only shape.
+  - **`ScriptChatSessionOptions.ForHostApi(api, additionalTypes)` in Core** does the
+    real work, and `AddScript` is a thin wrapper over it. Extracted because a test
+    was reaching into `_targets` by reflection to observe the wiring — a smell that
+    said this belonged in public API. It also serves a host that drives
+    `ScriptChatPanel` directly and so never touches the host panel.
+  - `HostApiLookup` (internal) holds the two halves: a lazily-built
+    `MetadataCompilation` over the host's assemblies, and the orientation
+    composition (prose from `scriptchat.context.md` if deployed, then the generated
+    index). The compilation is deferred to the first lookup — walking loaded
+    assemblies is not work to do while a host is still building its main form.
+  - Namespaces for bare-name resolution default to the namespaces of the API types
+    themselves, so a host that never said what its scripts import still gets bare
+    type names resolving.
+  - **Fixed an ordering trap while here**: `SetTargets` created no sessions, so
+    calling it *after* `Configure`/`UseStoredKey` left every target dead. Both
+    `SetTargets` and `AddScript` now create sessions when a client already exists,
+    so wiring order no longer matters. Two tests pin it.
 
 - [ ] **4 — Orientation composition.** `HostApiIndex` itself landed with item 1:
   - [x] **`Describe` never listed the root type's own members** — `Describe(typeof(MyAppApi))`
@@ -246,12 +260,26 @@ chatPanel.UseStoredKey("MyApp");
   - `IScriptChatHostContext` is an interface wrapping one string property, unused by
     the real adopter. Consider retiring it from the documented path.
 
-- [ ] **5 — An ordinary-app sample, written first.** Not a step so much as the
-  acceptance test for items 1–4: **write the sample as the target, then make it
-  compile.** If the sample isn't short, the API isn't finished.
-  `CDS.ScriptChat.TestHost` cannot serve this — it is a diagnostic harness with an
-  echo client, demo modes and CSV logging, not a template. Wanted: a small WinForms
-  app with a script `TextBox`, a domain API, and the two-call wiring above.
+- [x] **5 — An ordinary-app sample.** *Done 2026-08-24.*
+  `samples/CDS.ScriptChat.SampleApp` — a widget inspection station with a script
+  `TextBox`, a documented domain API (`InspectionApi` / `ScriptGlobals`), and the
+  two-call wiring. Verified three ways: 8 acceptance tests in `SampleAppTests`, a
+  Designer smoke test that constructs `MainForm` (its Designer file is hand-written
+  per D14), and an actual process launch confirming the window opens.
+  - **The sample runs its scripts** via `Microsoft.CodeAnalysis.CSharp.Scripting`
+    (5.9.0, matching the Roslyn Core already brings). An editor whose contents never
+    execute is unconvincing; this shows the whole loop — ask, accept, run.
+  - **`SampleAppTests` is the real acceptance test for the easy path**, because it
+    runs against an ordinary app rather than purpose-built fixtures. It pins the two
+    silent-failure modes: the context-file prose actually reaching the blurb, and
+    XML documentation actually reaching `lookup_symbol`.
+  - The orientation blurb was reviewed by eye, not just asserted on. It reads:
+    host prose, then `- \`ScriptGlobals\`: API, LowerLimitMm, UpperLimitMm` and
+    `- \`API\`: FailCount, Log, Measure, Parts, PassCount, Record`.
+  - **Finding worth carrying into the docs**: an adopting app must set
+    `GenerateDocumentationFile`, or every lookup returns a correct signature with no
+    documentation and nothing looks wrong. Called out in the sample's `.csproj`
+    comment and its readme; belongs in the main README too (item 6).
 
 - [ ] **6 — Point the docs at the easy path.** README's first block is the
   quickstart; the hand-rolled `ISymbolLookupProvider` route becomes the

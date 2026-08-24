@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/samples/">
+    <Project Path="samples/CDS.ScriptChat.SampleApp/CDS.ScriptChat.SampleApp.csproj" />
     <Project Path="samples/CDS.ScriptChat.TestHost/CDS.ScriptChat.TestHost.csproj" />
   </Folder>
   <Folder Name="/src/">

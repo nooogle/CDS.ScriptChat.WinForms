@@ -12,6 +12,52 @@ namespace CDS.ScriptChat.Core;
 public sealed record ScriptChatSessionOptions
 {
     /// <summary>
+    /// Builds the options for a host that wants the batteries-included path: symbol lookup and
+    /// an orientation blurb, both derived from its own API types.
+    /// </summary>
+    /// <param name="api">
+    /// The globals type a script is compiled against, or — for a host with no globals
+    /// indirection — its API class. Drives <em>both</em> the orientation index and
+    /// <c>lookup_symbol</c>, so what the model is told exists and what it can then ask about
+    /// cannot drift apart.
+    /// </param>
+    /// <param name="additionalTypes">
+    /// Types a script works with that <paramref name="api"/> does not itself expose.
+    /// </param>
+    /// <returns>Options ready to hand to a <see cref="ScriptChatSession"/>.</returns>
+    /// <exception cref="ArgumentNullException">Either argument is <see langword="null"/>.</exception>
+    public static ScriptChatSessionOptions ForHostApi(Type api, params Type[] additionalTypes) =>
+        ForHostApi(api, loggerFactory: null, additionalTypes);
+
+    /// <summary>
+    /// Builds the batteries-included options, logging where the orientation blurb came from.
+    /// </summary>
+    /// <param name="api">The globals type, or a flat API class.</param>
+    /// <param name="loggerFactory">
+    /// Where to record which source supplied the orientation prose. Worth passing: "the context
+    /// file was not deployed beside the executable" is the commonest reason a host's orientation
+    /// silently fails to reach the model. No blurb text is logged, at any level (D17).
+    /// </param>
+    /// <param name="additionalTypes">Types a script works with that <paramref name="api"/> does not expose.</param>
+    /// <returns>Options ready to hand to a <see cref="ScriptChatSession"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="api"/> or <paramref name="additionalTypes"/> is <see langword="null"/>.</exception>
+    public static ScriptChatSessionOptions ForHostApi(
+        Type api,
+        ILoggerFactory? loggerFactory,
+        params Type[] additionalTypes)
+    {
+        ArgumentNullException.ThrowIfNull(api);
+        ArgumentNullException.ThrowIfNull(additionalTypes);
+
+        return new ScriptChatSessionOptions
+        {
+            SymbolLookup = HostApiLookup.Create(api, additionalTypes),
+            OrientationBlurb = HostApiLookup.BuildOrientation(api, additionalTypes, loggerFactory),
+            LoggerFactory = loggerFactory,
+        };
+    }
+
+    /// <summary>
     /// Gets the symbol engine backing the <c>lookup_symbol</c> tool. Defaults to
     /// <see cref="NullSymbolLookupProvider"/>, which resolves nothing.
     /// </summary>

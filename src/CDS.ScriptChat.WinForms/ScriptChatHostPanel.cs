@@ -105,9 +105,9 @@ public partial class ScriptChatHostPanel : UserControl
     /// <remarks>
     /// <para>
     /// This is the one-line replacement for the load-key/show-settings/persist-choice sequence
-    /// every host previously wrote by hand. Call it after <see cref="SetTargets"/>. Bring your
-    /// own key: nothing ships with the app, and the panel stays switched off with a pointer at
-    /// the settings dialogue until the user supplies one (D3).
+    /// every host previously wrote by hand. It can be called before or after the scripts are
+    /// added. Bring your own key: nothing ships with the app, and the panel stays switched off
+    /// with a pointer at the settings dialogue until the user supplies one (D3).
     /// </para>
     /// <para>
     /// The provider and model are remembered in a small file beside the encrypted key store. A
@@ -200,8 +200,14 @@ public partial class ScriptChatHostPanel : UserControl
             : null;
 
     /// <summary>
-    /// Tells the panel which scripts it can talk about. Call this before <see cref="Configure"/>.
+    /// Tells the panel which scripts it can talk about, replacing any already added.
     /// </summary>
+    /// <remarks>
+    /// The lower-level counterpart of <see cref="AddScript(string, Func{string}, Action{string}, Type, Type[])"/>,
+    /// for a host that builds its own <see cref="ScriptChatTarget"/> list. Order does not matter:
+    /// calling this after the panel is already configured gives every target a conversation
+    /// straight away.
+    /// </remarks>
     /// <param name="targets">The targets to offer, in the order they appear in the selector.</param>
     /// <exception cref="ArgumentNullException"><paramref name="targets"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="targets"/> is empty.</exception>
@@ -213,20 +219,127 @@ public partial class ScriptChatHostPanel : UserControl
             throw new ArgumentException("At least one target is required.", nameof(targets));
         }
 
-        _targets = [.. targets.Select(target => new TargetState(target))];
+        _targets = [.. targets.Select(target => new TargetState(target) { Session = CreateSession(target) })];
+        RebuildSelector(selectedIndex: 0);
+    }
 
+    /// <summary>
+    /// Adds one script for the assistant to talk about, wiring its symbol lookup and orientation
+    /// from the host's own API types. This is the easy path; call it once per script.
+    /// </summary>
+    /// <param name="name">The label shown on the target selector, e.g. <c>"Processing"</c>.</param>
+    /// <param name="read">Reads the script currently in the host's editor.</param>
+    /// <param name="write">Replaces the script, once the user has accepted an edit (D5).</param>
+    /// <param name="api">
+    /// The globals type the script is compiled against, or — for a host with no globals
+    /// indirection — its API class. Drives <em>both</em> the orientation index and
+    /// <c>lookup_symbol</c>, so what the model is told exists and what it can then ask about
+    /// cannot drift apart.
+    /// </param>
+    /// <param name="additionalTypes">
+    /// Types the script works with that <paramref name="api"/> does not itself expose — typically
+    /// the panel and component types its properties hand results out through.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// The orientation blurb is the host's own prose — from <c>scriptchat.context.md</c> beside
+    /// the executable, if it is there — followed by an index generated from
+    /// <paramref name="api"/> by reflection, so the list of what exists cannot fall behind the
+    /// code.
+    /// </para>
+    /// <para>
+    /// Symbol lookup resolves against a metadata-only compilation over the host's own assemblies,
+    /// built lazily on the first lookup rather than here, so wiring the panel up costs nothing at
+    /// startup. A host whose editor produces a real <see cref="Microsoft.CodeAnalysis.Compilation"/>
+    /// should use the overload taking a session-options factory and supply
+    /// <see cref="RoslynSymbolLookupProvider"/> over that instead — it reflects what the script
+    /// can currently see, which a metadata compilation cannot.
+    /// </para>
+    /// <para>
+    /// Order does not matter: calling this after the panel is already configured gives the new
+    /// script a conversation straight away.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="name"/> is empty or whitespace.</exception>
+    /// <exception cref="ArgumentNullException">Any other argument is <see langword="null"/>.</exception>
+    public void AddScript(
+        string name,
+        Func<string> read,
+        Action<string> write,
+        Type api,
+        params Type[] additionalTypes)
+    {
+        ArgumentNullException.ThrowIfNull(api);
+        ArgumentNullException.ThrowIfNull(additionalTypes);
+
+        // Built once, not per conversation: the orientation and the reachable API are fixed for
+        // the lifetime of the host, and rebuilding would discard the deferred compilation.
+        var options = ScriptChatSessionOptions.ForHostApi(api, _loggerFactory, additionalTypes);
+
+        AddScript(name, read, write, () => options);
+    }
+
+    /// <summary>
+    /// Adds one script, with the host deciding for itself what each new conversation about it is
+    /// given — its own symbol engine, or an orientation blurb built per conversation.
+    /// </summary>
+    /// <param name="name">The label shown on the target selector.</param>
+    /// <param name="read">Reads the script currently in the host's editor.</param>
+    /// <param name="write">Replaces the script, once the user has accepted an edit (D5).</param>
+    /// <param name="createSessionOptions">
+    /// Builds the options for a new conversation about this script. A factory rather than a fixed
+    /// value so a host can capture something that is only true when the conversation starts — a
+    /// snapshot of a counterpart script, say.
+    /// </param>
+    /// <exception cref="ArgumentException"><paramref name="name"/> is empty or whitespace.</exception>
+    /// <exception cref="ArgumentNullException">Any other argument is <see langword="null"/>.</exception>
+    public void AddScript(
+        string name,
+        Func<string> read,
+        Action<string> write,
+        Func<ScriptChatSessionOptions> createSessionOptions)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(read);
+        ArgumentNullException.ThrowIfNull(write);
+        ArgumentNullException.ThrowIfNull(createSessionOptions);
+
+        var state = new TargetState(new ScriptChatTarget
+        {
+            DisplayName = name,
+            ScriptTextProvider = read,
+            ScriptTextSetter = write,
+            CreateSessionOptions = createSessionOptions,
+        });
+
+        // A script added after the panel is already configured gets a conversation immediately,
+        // so a host is free to call AddScript and UseStoredKey in either order.
+        state.Session = CreateSession(state.Target);
+
+        var wasEmpty = _targets.Length == 0;
+        _targets = [.. _targets, state];
+
+        RebuildSelector(selectedIndex: wasEmpty ? 0 : _targetSelector.SelectedIndex);
+    }
+
+    /// <summary>Repopulates the selector from <see cref="_targets"/> and re-renders.</summary>
+    private void RebuildSelector(int selectedIndex)
+    {
         _targetSelector.BeginUpdate();
         _targetSelector.Items.Clear();
-        foreach (var target in targets)
+        foreach (var state in _targets)
         {
-            _targetSelector.Items.Add(target.DisplayName);
+            _targetSelector.Items.Add(state.Target.DisplayName);
         }
 
         _targetSelector.EndUpdate();
 
         // Driven explicitly rather than relying on SelectedIndexChanged, so the first render
         // does not depend on exactly when the combo box chooses to raise it.
-        _targetSelector.SelectedIndex = 0;
+        _targetSelector.SelectedIndex = _targets.Length == 0
+            ? -1
+            : Math.Clamp(selectedIndex, 0, _targets.Length - 1);
+
         ShowSelectedTarget();
     }
 
