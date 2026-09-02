@@ -21,7 +21,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Anthropic" Version="12.42.0" />
+		<PackageReference Include="Anthropic" Version="12.44.0" />
 		<!-- D22. CSharp rather than Common: MetadataCompilation needs CSharpCompilation.Create,
 		     and Common comes in transitively for the resolver. Version matches the one the
 		     consuming scripting hosts already load, so no diamond is introduced. -->
