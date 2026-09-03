@@ -4,7 +4,7 @@ NuGet/CI/release mechanics. Distinct from `todo.features.md` (new capabilities)
 and `todo.bugs.md` (defects).
 
 **The pipeline is built and working.** Both packages are live on nuget.org
-(`1.1.0` → `1.4.0`), published by `release.yml` on a `V*.*.*` tag push via OIDC
+(`1.1.0` → `1.4.2`), published by `release.yml` on a `V*.*.*` tag push via OIDC
 trusted publishing, with SBOMs and build-provenance attestations. CI, CodeQL,
 Scorecard and Dependabot all run green, and `pack-local.ps1` stages prereleases
 to the `cds-local` feed for host apps to try first.
@@ -18,63 +18,51 @@ to the `cds-local` feed for host apps to try first.
 
 ---
 
-## Releasing now — `V1.4.2`
+## Released — `V1.4.2` is live
 
 Two packages ship, always together and always on the same version (MinVer
 derives both from the one tag):
 **`CDS.ScriptChat.Core`** and **`CDS.ScriptChat.WinForms`**.
 
-**Version: `V1.4.2`** (decided 2026-08-24). The last publish was `V1.4.0` —
-nuget.org carries `1.1.0, 1.2.0, 1.3.0, 1.3.1, 1.4.0`, all five tags on the
-remote. `1.4.1` is skipped deliberately: that number is already in use by the
-`1.4.1-alpha.0.N` prereleases sitting in the `cds-local` feed, and reusing the
-line invites confusion between a local build and a real release.
+**nuget.org carries `1.1.0, 1.2.0, 1.3.0, 1.3.1, 1.4.0, 1.4.1, 1.4.2`** for both
+packages (checked 2026-09-03 against the flat container). `V1.4.1` shipped
+2026-08-24 on the Job 5 merge, and **`V1.4.2` shipped 2026-09-02** on the
+`Anthropic` 12.42.0 → 12.44.0 bump — both release runs green end to end.
 
-**How to cut it**: merge to `master`, then tag and push `V1.4.2`.
-`release.yml` fires on the `V*.*.*` tag and does the rest — build, both MTP
-suites, pack, SBOMs, attestations, GitHub Release, OIDC auth, push to
-nuget.org. No manual API key, no separate pack step.
+*(An earlier version of this section said the last publish was `V1.4.0` and
+wrote `V1.4.2` up as still pending. That was wrong twice over: `V1.4.1` was
+never skipped, and `V1.4.2` had already gone out. Corrected 2026-09-03 from the
+tags and the `release.yml` run history.)*
 
-**What is in it** — seven commits since `V1.4.0`: the Job 5 adoption work
-(Roslyn `XmlFileDocumentationProvider`, the sample app, per-script orientation
-context files, docs), the status-line fix found by the Playground migration, and
-a Dependabot bump of `Anthropic` 12.42.0 → 12.44.0.
+Everything the adoption milestone produced — `AddScript`, `UseStoredKey`,
+`ForHostApi`, `HostApiIndex`, `RoslynSymbolResolver`,
+`RoslynSymbolLookupProvider`, `MetadataCompilation`,
+`ScriptChatProviderPreference`, `SymbolLookedUpEventArgs`,
+`HostOrientationResolver.ResolveForScript`, `ScriptChatPanel.ReadyStatus`, and
+the `Microsoft.CodeAnalysis.CSharp` dependency (D22) — is published.
 
-**Note for the release notes**: this is a patch-numbered release carrying a
-substantial *additive* API surface — `AddScript`, `UseStoredKey`, `ForHostApi`,
-`HostApiIndex`, `RoslynSymbolResolver`, `RoslynSymbolLookupProvider`,
-`MetadataCompilation`, `ScriptChatProviderPreference`, `SymbolLookedUpEventArgs`,
-`HostOrientationResolver.ResolveForScript`, `ScriptChatPanel.ReadyStatus` — plus
-a new dependency (D22). Nothing is breaking, so the number is safe; the notes
-just have to carry the weight the version number doesn't.
+### Left over from that release
 
-**After publishing**: `CDS.OpenCvSharpPlayground` (both the app and the demo)
-references `1.4.1-alpha.0.4` from the `cds-local` feed, not a released version.
-Bump both `.csproj` files to `1.4.2`, or that repo stays pinned to a local
-prerelease that exists on no other machine.
+- [ ] **Bump `CDS.OpenCvSharpPlayground` off the local prerelease.** Both the app
+      and the demo still reference `1.4.1-alpha.0.4` from the `cds-local` feed.
+      `1.4.2` is on nuget.org now, so this is actionable immediately — until it is
+      done that repo is pinned to a build that exists on no other machine.
+- [ ] **`PackageReleaseNotes` or a CHANGELOG.** Still nothing: no `CHANGELOG.md`
+      in the repo and neither csproj sets `PackageReleaseNotes` (verified
+      2026-09-03). Three releases have now gone out with the GitHub Release body
+      as the only record, and `1.4.1`/`1.4.2` between them carried a whole new
+      adoption API under patch version numbers — exactly the case release notes
+      exist for.
 
-- [ ] **`CDS.ScriptChat.Core` now depends on `Microsoft.CodeAnalysis.CSharp` 5.9.0**
-      (D22). Non-breaking — no existing API changed — but it is a new transitive
-      dependency and roughly +10 MB deployed, so it belongs in release notes
-      rather than arriving unannounced. Version pinned to match what the
-      consuming scripting hosts already load, so no diamond is introduced.
-- [ ] **Behaviour change worth a release note**: a host that never wired a symbol
-      provider is no longer offered `lookup_symbol` at all (D20). That is the fix,
-      but it changes what the model is told.
-- [ ] **New public API to mention**: `ScriptChatHostPanel.AddScript` /
-      `UseStoredKey`, `ScriptChatSessionOptions.ForHostApi`, `HostApiIndex`,
-      `RoslynSymbolResolver`, `RoslynSymbolLookupProvider`, `MetadataCompilation`,
-      `ScriptChatProviderPreference`, `SymbolLookedUpEventArgs`,
-      `HostOrientationResolver.ResolveForScript`,
-      `ScriptChatPanel.ReadyStatus`.
-- [ ] **Behaviour change worth a release note**: the status line now keeps
-      `Ready · {provider} · {model}` instead of dropping to `Ready.` after the
-      first turn or on a target switch, and `ScriptChatHostPanel` shows it at all
-      (it previously only ever read `Ready.`). A host asserting on the literal
-      text `"Ready."` would see this.
-- [ ] `PackageReleaseNotes` or a CHANGELOG — open since the first publish; there
-      is no `CHANGELOG.md` in the repo and neither csproj sets
-      `PackageReleaseNotes` (verified 2026-08-24).
+### How the next release goes
+
+Merge to `master`, then tag and push `V*.*.*`. `release.yml` does the rest —
+build, both MTP suites, pack, SBOMs, attestations, GitHub Release, OIDC auth,
+push to nuget.org. No manual API key, no separate pack step.
+
+Note that `master` is protected with `enforce_admins: true`, a required
+`Build & Test` check and a required pull request, so changes land through a PR
+even for the repo owner.
 
 ---
 
