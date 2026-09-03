@@ -47,12 +47,6 @@ the `Microsoft.CodeAnalysis.CSharp` dependency (D22) — is published.
       and the demo still reference `1.4.1-alpha.0.4` from the `cds-local` feed.
       `1.4.2` is on nuget.org now, so this is actionable immediately — until it is
       done that repo is pinned to a build that exists on no other machine.
-- [ ] **`PackageReleaseNotes` or a CHANGELOG.** Still nothing: no `CHANGELOG.md`
-      in the repo and neither csproj sets `PackageReleaseNotes` (verified
-      2026-09-03). Three releases have now gone out with the GitHub Release body
-      as the only record, and `1.4.1`/`1.4.2` between them carried a whole new
-      adoption API under patch version numbers — exactly the case release notes
-      exist for.
 
 ### How the next release goes
 
@@ -167,6 +161,20 @@ open, rather than carried over on trust.
       was never done by hand.
 
 ## Decisions
+
+- **No `CHANGELOG.md`, and no `PackageReleaseNotes`** (2026-09-03). Now fleet
+  policy rather than a per-repo choice — see `Docs/CI-CD-STANDARDS.md` →
+  "Deliberately not doing: `CHANGELOG.md` and `PackageReleaseNotes`".
+  `release.yml` already creates a GitHub Release with
+  `generate_release_notes: true`, so a changelog is a second place to say the
+  same thing and the two drift; a hardcoded `PackageReleaseNotes` is worse
+  still, because nuget.org renders a static string against every future
+  version. Nothing in the policy docs ever required either. The habit that
+  replaces them is a descriptive PR title, which is what the generated note is
+  built from — `V1.4.1`'s release reads "Roslyn tooling, multi-script
+  orientation, status line" for exactly that reason. This repo needed no
+  change; `CDS.Markdown`, `CDS.SQLiteLogging` and `CDS.FluentHtmlReports` had
+  partially adopted them and are being cleaned up to match.
 
 - **Two packages.** `CDS.ScriptChat.Core` and `CDS.ScriptChat.WinForms` ship
   separately, keeping the Core/WinForms split of the design doc intact.
