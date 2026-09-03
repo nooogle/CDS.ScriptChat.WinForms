@@ -13,14 +13,16 @@ it; the arguments were had properly and are recorded.
 
 ## ▶ Start here — next session
 
-- [ ] **Release `V1.4.2`** — tag and push; `release.yml` does the rest. Seven
-  commits since `V1.4.0`: the Job 5 adoption work, the status-line fix the
-  Playground migration found, and a Dependabot `Anthropic` bump. Additive API
-  only, nothing breaking. See `todo.packaging.md` → "Releasing now" for the
-  release-note list and the post-publish Playground bump.
+**`V1.4.2` is released** — both packages are on nuget.org, carrying the whole
+Job 5 adoption API. Nothing is queued behind a release any more.
 
-After that: **Job 8** (small, unblocked — its slice 8a is a few lines), the two
-Known Issues below, then the parked jobs. `todo.bugs.md` is empty.
+Next up, in rough order of value for effort:
+
+- [ ] **Job 8, slice 8a** — restore the input box when a turn fails. A few lines,
+  fixes a real loss of the user's typing. Details under Job 8 below.
+- [ ] **Bump `CDS.OpenCvSharpPlayground` to `1.4.2`** — it still references the
+  `1.4.1-alpha.0.4` local prerelease. See `todo.packaging.md`.
+- [ ] The two Known Issues below, then the parked jobs. `todo.bugs.md` is empty.
 
 > **Completed work has been removed from this file** (2026-08-24) so it shows
 > only what is outstanding. Job 5 — the adoption path — and the Playground
