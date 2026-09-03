@@ -497,8 +497,7 @@ Job 5 / D22.)*
   Playground migration is the test of whether it is worth it. See
   `todo.features.md` → "Start here".
 - ~~**Multi-script host support**~~ **Done.** Real feedback from extracting the
-  OpenCvSharp Playground app, parked in `todo.packaging.md` ("Not packaging —
-  API feedback from a consuming host"). Shipped as `ScriptChatTarget` (Core) and
+  OpenCvSharp Playground app. Shipped as `ScriptChatTarget` (Core) and
   `ScriptChatHostPanel` (WinForms, `SetTargets(params ScriptChatTarget[])`),
   generalised to any number of targets rather than the Playground's original
   two — see `todo.packaging.md` for the detail. The Playground has migrated

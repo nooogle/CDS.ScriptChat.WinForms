@@ -13,82 +13,20 @@ it; the arguments were had properly and are recorded.
 
 ## ▶ Start here — next session
 
-**Job 5 is complete** (all six items, 2026-08-24), and so is the Playground
-migration that was meant to prove it (2026-08-24, below). 129 Core + 124 WinForms
-tests green. The adoption path is two calls; see the root `README.md` quick start.
+- [ ] **Release `V1.4.2`** — tag and push; `release.yml` does the rest. Seven
+  commits since `V1.4.0`: the Job 5 adoption work, the status-line fix the
+  Playground migration found, and a Dependabot `Anthropic` bump. Additive API
+  only, nothing breaking. See `todo.packaging.md` → "Releasing now" for the
+  release-note list and the post-publish Playground bump.
 
-- [ ] **Release, as `V1.5.0`.** The only thing left before publishing. The last
-  publish was `V1.4.0`; everything unreleased is the Job 5 adoption work (four
-  commits since the tag, plus the Playground-migration fix). Additive but large —
-  a whole new adoption API, plus a `Microsoft.CodeAnalysis.CSharp` dependency
-  (D22) and `ScriptChatPanel.ReadyStatus`. See `todo.packaging.md` → "Next
-  release" for the full list and the bump rationale.
+After that: **Job 8** (small, unblocked — its slice 8a is a few lines), the two
+Known Issues below, then the parked jobs. `todo.bugs.md` is empty.
 
-After that, the open work is the bug in `todo.bugs.md`, the two Known Issues
-below, and the parked jobs.
-
-### ✅ Migrating `CDS.OpenCvSharpPlayground` onto the new API — done 2026-08-24
-
-The adjacent repo at `c:\dev\nooogle\CDS.OpenCvSharpPlayground`, which is where
-Job 5's measurements came from, now consumes `1.4.1-alpha.0.4` from the local
-feed. **213 net lines deleted** from the adopter, whole solution builds with 0
-warnings, its 154 tests green, and the app was launched and screenshotted with a
-live Claude client and both conversations created (`Tools=3`, so `lookup_symbol`
-is genuinely advertised).
-
-What went, as planned: both copies of the hand-written
-`RoslynSymbolLookupProvider` (86 lines each), the app's `SymbolLookupEventArgs`
-(27), the demo's `ScriptChatSymbolLookup` (55), `ScriptChatOrientation`'s
-`ReadContext` and its embedded-resource fallback, and the ~70 lines of
-key/settings/restore in `MainForm.Chat.cs` — replaced by
-`UseStoredKey(applicationName, load, save)`, since the Playground keeps
-provider/model in its own settings file.
-
-**Five findings, in order of how much they mattered.**
-
-1. **The host panel's status line lost the provider — fixed here.** This was
-   already recorded as "known gap, minor" under Job 5 item 2, and the migration
-   turned it into a real regression: the Playground used to log *"AI chat ready:
-   Claude · claude-sonnet-5"* to its output strip from the code `UseStoredKey`
-   replaced, and after the migration nothing said which provider was live.
-   `ScriptChatPanel.SetStatus($"Ready · …")` was a **one-off write** that the
-   next `AttachSession` overwrote with a plain `"Ready."` — so even the inner
-   panel dropped the provider at the end of the first turn, and on every target
-   switch. Now `ScriptChatPanel.ReadyStatus` (new public property), set by
-   `Configure` and by `ScriptChatHostPanel.Configure`, cleared by
-   `SetUnavailable`. Four new tests; three existing `AddScriptTests` assertions
-   updated from `"Ready."` to `StartWith("Ready · Claude · ")`.
-2. **The predicted `AddScript(…, compilationSource, …)` overload is not the
-   answer, and was not added.** The prediction was right that the Playground
-   cannot use the easy path, but wrong about why. The blocker is not the
-   compilation source — it is that the orientation carries a **snapshot of the
-   counterpart script**, so it must be built per conversation, which only the
-   session-options-factory overload can do. An overload taking a compilation
-   source would still fix the orientation at wiring time and so would not have
-   helped. What the Playground writes instead is a 25-line private
-   `AddChatScript` helper called twice, and it reads fine.
-3. **No embedded-resource fallback was needed.** The Playground shipped its
-   context markdown twice — copied beside the executable *and* embedded — and
-   the embedded copy was dropped rather than added to the library. A second copy
-   that only ever masks a failed deployment is not worth the loader it needs, and
-   `HostOrientationResolver.ResolveForScript` found both files first time.
-4. **`HostApiIndex.Describe` now leads with the root type**, so the Playground's
-   index gained `- \`WorkspaceGlobals\`: API` / `- \`ProcessingGlobals\`: API`
-   ahead of what `ScriptApiIndex` used to emit. That is the item-4 flat-API fix
-   working as designed; slightly redundant for a globals type whose only member
-   is `API`, and not worth special-casing.
-5. **`RoslynSymbolResolver` rejects a null namespace list** where the workbench's
-   `ScriptSymbolLookup` accepted a nullable `ScriptEnvironment`. Costs an adopter
-   `?? []`. Not worth changing.
-
-**Deliberately left undone, and why.** `ScriptSymbolLookup` (393),
-`ScriptApiIndex` (208), `ScriptSymbolInfo` (35) and their tests are now dead in
-`CDS.OpenCvSharpWorkbench.WinForms` — but that project is `IsPackable` and
-**published**, so deleting them is a breaking change to someone else's package,
-and it would need D18 rewritten across that repo's `CLAUDE.md`,
-`docs/design-decisions.md` and `docs/playground-library-design.md`. That is its
-own milestone in its own repo, not a tail-end of this one. Noted in that repo's
-`docs/todo.md`.
+> **Completed work has been removed from this file** (2026-08-24) so it shows
+> only what is outstanding. Job 5 — the adoption path — and the Playground
+> migration that proved it both shipped; their reasoning survives as **D20–D23**
+> in `cds.scriptchat.design.md`, and the full write-ups are in git history
+> (`git log -p -- todo.features.md`).
 
 ---
 
@@ -126,9 +64,8 @@ the existing Claude/OpenAI wiring in
 ## Job 2 — Support open-source / self-hosted models
 
 Already flagged as a future milestone in `cds.scriptchat.design.md`
-("Local/self-hosted provider... no base-URL override exists today") and
-parked in `todo.packaging.md` under "Not packaging — API feedback from a
-consuming host". This job is about scoping and landing that.
+("Local/self-hosted provider... no base-URL override exists today"). This job is
+about scoping and landing it.
 
 - [ ] Decide which open-source / local runtimes to target first. Candidates:
   - **Ollama** — OpenAI-compatible REST API, easiest fit for the existing
@@ -157,8 +94,6 @@ consuming host". This job is about scoping and landing that.
   local server is optional/manual, not CI (no local model in CI).
 - [ ] Update `cds.scriptchat.design.md` once this lands — this is currently
   listed under "Future milestones", not a formal `D`-numbered decision yet.
-
-
 
 ## Job 4 — Multi-modal input (images alongside text)
 
@@ -191,210 +126,7 @@ always builds a single-`TextContent` `ChatMessage`
 - [ ] Update `cds.scriptchat.design.md` (new `D`-numbered decision) once this
   lands.
 
-## Job 5 — Make adoption easy for a host that has C# scripts *(the current milestone)*
-
-**The goal.** An existing WinForms app with a C# script editor and some API types
-should get a working AI script assistant in **two calls and no adapter classes**.
-Everything below is measured against that, not against internal tidiness.
-
-**Scope (D21).** C# script chat only. Not general chat, not settings, not MCP, not
-data review. Jobs 6 and 7 are parked below with their reasoning intact.
-
-### The measured baseline (2026-08-24)
-
-What the OpenCvSharp Playground — the **best case**, since the workbench had already
-built the Roslyn tooling — actually writes to consume this library:
-
-| File | Lines |
-|---|---|
-| `ScriptChatOrientation.cs` | 185 |
-| `RoslynSymbolLookupProvider.cs` | 86 — **duplicated verbatim in `demo/UseCasesDemo`** |
-| `MainForm.Chat.cs` (chat wiring only) | 202 |
-| **Adopter total** | **~473** |
-| Prerequisite tooling built first: `ScriptSymbolLookup` 393 + `ScriptApiIndex` 208 + `ScriptSymbolInfo` 35 | 636 |
-
-~1,100 lines, plus two markdown context files. The adapter's own doc comment names
-the problem: *"This adapter is the entire cost of choosing your own chat library."*
-
-### Target quickstart
-
-Design backwards from this. If it is the README's first code block, the job is done:
-
-```csharp
-// One Type drives BOTH the orientation index and lookup_symbol, so what the model
-// is told exists and what it can ask about cannot drift apart.
-chatPanel.AddScript(
-    name:  "Processing",
-    read:  () => _scriptBox.Text,
-    write: text => _scriptBox.Text = text,
-    api:   typeof(ProcessingGlobals));
-
-// Key store + settings dialogue + restore-on-startup, in one line.
-chatPanel.UseStoredKey("MyApp");
-```
-
----
-
-- [x] **1 — Roslyn in the box (D22).** *Done 2026-08-24.* `Microsoft.CodeAnalysis.CSharp`
-  5.9.0 added to Core — the same version the consuming scripting hosts already load,
-  so no diamond. 114 Core + 87 WinForms tests green, solution builds with 0 warnings.
-  Landed: `RoslynSymbolResolver`, `RoslynSymbolLookupProvider`,
-  `MetadataCompilation`, `HostApiIndex`, `SymbolLookedUpEventArgs`, and one piece
-  that was not planned — see below.
-  - **`XmlFileDocumentationProvider` (unplanned).** Roslyn's own
-    `XmlDocumentationProvider.CreateFromFile` — which the plan named — lives in
-    `Microsoft.CodeAnalysis.Workspaces`, not in Common or CSharp. Taking the whole
-    Workspaces package for one class was the wrong trade on a package a host adopts
-    purely to answer `lookup_symbol`, so Core carries a ~50-line
-    `DocumentationProvider` of its own instead. Covered by
-    `MetadataCompilationTests.FromTypes_AttachesXmlDocumentation`, which is the test
-    that would have caught the silent no-documentation failure.
-  - **`HostApiIndex` was pulled forward from item 4**, because the resolver needs
-    `ScriptFacingTypes` to know which types to search a bare member name on. Its
-    flat-API bug and the hardcoded `"API"` facade name are both fixed and pinned by
-    tests; the rest of item 4 (orientation composition) is untouched.
-  - **Migration note for the Playground**: its adapter took a
-    `ScriptEnvironment`; the shipped resolver takes `IEnumerable<string>` instead,
-    so `new RoslynSymbolResolver(editor.API.Environment.NamespaceNames, globalsType,
-    componentTypes)` is the replacement. `ScriptSymbolInfo` and both copies of
-    `RoslynSymbolLookupProvider` can then be deleted.
-  - Original plan, kept for reference:
-  - `RoslynSymbolResolver` — the 393-line resolver (`ScriptSymbolLookup.cs`):
-    metadata arity for generics, namespace-prefix candidates, inheritance walk,
-    `cref` resolution, doc flattening. Must return `SymbolLookupResult` **directly**
-    — `ScriptSymbolInfo` is a four-property twin of it and gets deleted rather than
-    moved, along with every mapping of it.
-  - `RoslynSymbolLookupProvider : ISymbolLookupProvider` — the adapter both existing
-    consumers hand-wrote. Two overloads: `Func<CancellationToken, Task<Compilation?>>`
-    for a live editor, and a plain `Compilation` for a host whose compilation is static.
-  - `MetadataCompilation.FromTypes(...)` / `.FromAssemblies(...)` — the path for a
-    host that runs scripts but never exposes a Roslyn `Compilation` (e.g. plain
-    `CSharpScript.EvaluateAsync`). Carries the non-obvious part: XML docs must be
-    attached explicitly via `XmlDocumentationProvider.CreateFromFile`, because
-    Roslyn does not look for the `.xml` on its own. Miss it and every lookup returns
-    a correct signature with no documentation.
-  - `ISymbolLookupProvider` stays public and unchanged — a host with its own engine
-    still implements it. The shipped provider is the answer for everyone else.
-  - Tests: port `ScriptSymbolLookupTests` (143 lines) from the donor repo.
-
-- [x] **2 — `UseStoredKey` — the boilerplate nobody was tracking.** *Done 2026-08-24.*
-  ~70 lines of load-key / show-settings / persist-choice replaced by one call on
-  `ScriptChatHostPanel`. 105 WinForms tests green.
-  - Three overloads, narrowing as the host needs more control:
-    `UseStoredKey("MyApp")` (DPAPI store + preferences in a file beside it — the
-    whole story, one line); `UseStoredKey("MyApp", load, save)` for a host that
-    keeps provider/model in its own settings file; and
-    `UseStoredKey(IApiKeyStore, load, save)` for a host with its own key store.
-  - `ScriptChatProviderPreference(Provider, ModelId)` is the public record the
-    load/save pair trades in. It carries **no key** — that stays in `IApiKeyStore`
-    (D3), and the internal `ProviderPreferenceFile` never sees one.
-  - `ProviderPreferenceFile` uses plain `key=value`, not JSON: two values do not
-    justify a serialiser, and it avoids reflection-serialisation trimming warnings
-    in a library. Every failure path degrades to "no preference recorded" — falling
-    back to the default provider is survivable, refusing to open the panel is not.
-  - New `ApiKeyStore` property so a host can still reach the store.
-  - **Known gap, deliberate**: this is on `ScriptChatHostPanel` only, because
-    `ScriptChatPanel` has no settings button and so no `SettingsRequested` to hang
-    it off. That makes `ScriptChatHostPanel` the control an adopter actually drops
-    in, with `ScriptChatPanel` the inner one — worth confirming when item 3 lands,
-    since `AddScript` should follow the same choice.
-  - ~~**Second gap, minor**: the host panel's status reads just `Ready.` where
-    `ScriptChatPanel` shows `Ready · {provider} · {model}`.~~ **Fixed 2026-08-24**
-    during the Playground migration, which turned it into a real regression for a
-    real adopter — and showed it was not confined to the host panel: the inner
-    panel's `Ready · …` was a one-off write that the next `AttachSession` (every
-    target switch, and the end of every turn) replaced with `Ready.`. See finding
-    1 in the migration notes above.
-
-- [x] **3 — `AddScript` — where "easy" actually lands.** *Done 2026-08-24.*
-  122 Core + 112 WinForms tests green. The two-call quickstart is now real and is
-  pinned by `AddScriptTests.Quickstart_TwoCalls_ProducesAWorkingPanel`, so it cannot
-  quietly stop being true.
-  - `ScriptChatHostPanel.AddScript(name, read, write, api, additionalTypes)` is the
-    easy path; `AddScript(name, read, write, createSessionOptions)` keeps the
-    factory shape for a host that needs it (the Playground's counterpart-script
-    snapshot). The capability stays, it is just no longer the only shape.
-  - **`ScriptChatSessionOptions.ForHostApi(api, additionalTypes)` in Core** does the
-    real work, and `AddScript` is a thin wrapper over it. Extracted because a test
-    was reaching into `_targets` by reflection to observe the wiring — a smell that
-    said this belonged in public API. It also serves a host that drives
-    `ScriptChatPanel` directly and so never touches the host panel.
-  - `HostApiLookup` (internal) holds the two halves: a lazily-built
-    `MetadataCompilation` over the host's assemblies, and the orientation
-    composition (prose from `scriptchat.context.md` if deployed, then the generated
-    index). The compilation is deferred to the first lookup — walking loaded
-    assemblies is not work to do while a host is still building its main form.
-  - Namespaces for bare-name resolution default to the namespaces of the API types
-    themselves, so a host that never said what its scripts import still gets bare
-    type names resolving.
-  - **Fixed an ordering trap while here**: `SetTargets` created no sessions, so
-    calling it *after* `Configure`/`UseStoredKey` left every target dead. Both
-    `SetTargets` and `AddScript` now create sessions when a client already exists,
-    so wiring order no longer matters. Two tests pin it.
-
-- [x] **4 — Orientation composition.** *Done 2026-08-24.* `HostApiIndex` landed with
-  item 1; the composition and the resolver gap closed here.
-  - [x] **`Describe` never listed the root type's own members** — `Describe(typeof(MyAppApi))`
-    on a flat API class returned `""`, silently. Fixed: the root is now the first
-    entry, which also surfaces the plain data a globals type carries (an `int`
-    threshold) that nothing else in the walk mentioned. Its facade is deliberately
-    *not* followed at the root, so the property walk still labels it `API` — what a
-    script author types — rather than `MyGlobals.API`.
-  - [x] Facade property name is now an optional parameter defaulting to `"API"`,
-    and `null` follows no facade at all.
-  - [x] Dead `cref`s to `ScriptRunner<TGlobals>`, `Control`/`UserControl` etc. removed.
-  - [x] **`HostOrientationResolver` was bypassed by the only real adopter**, which
-    hand-rolled its own `ReadContext` because it needed per-script filenames. Fixed:
-    `FileNameFor(scriptName)` and `ResolveForScript(...)` add a
-    `scriptchat.<name>.context.md` convention that falls back to the shared
-    `scriptchat.context.md`, so a host with several scripts writes one file until a
-    script actually needs its own. `AddScript` passes the script's name through
-    automatically, so this costs an adopter nothing. Composition with the generated
-    index now lives in `HostApiLookup.BuildOrientation`, which is the other half the
-    adopter was hand-writing.
-  - [x] **`IScriptChatHostContext` reviewed and deliberately kept.** It is thin — one
-    string property — but it is a legitimate way for a host to supply the blurb from
-    code rather than a file, it is public in a package already live on nuget.org, and
-    removing it would be a breaking change that buys nothing. Dropped from the
-    documented path (the readmes now lead with `ForHostApi`) rather than retired.
-    Not everything untidy is worth churning public API over.
-  - [x] **Stale `LoggerFactory` XML doc fixed** (was under "Known issues" below): it
-    still claimed `Trace` records prompt and response content, which D17 removed
-    outright. It shipped in a public package's IntelliSense telling adopters
-    something untrue about how their data is handled.
-
-- [x] **6 — Point the docs at the easy path.** *Done 2026-08-24.* Root `README.md`
-  quick start is now the two-call version, with the hand-written
-  `ISymbolLookupProvider` route demoted to "The manual path". Both package readmes
-  updated. Several statements had become false and were corrected rather than left:
-  "no Roslyn" in the Core description and the packages table (D22), and "nothing
-  use-case-specific ships in the library". The
-  `GenerateDocumentationFile` warning is called out in all three readmes and the
-  sample's `.csproj` — it is the easiest thing for an adopter to get wrong, and it
-  fails by looking like it worked.
-
-- [x] **5 — An ordinary-app sample.** *Done 2026-08-24.*
-  `samples/CDS.ScriptChat.SampleApp` — a widget inspection station with a script
-  `TextBox`, a documented domain API (`InspectionApi` / `ScriptGlobals`), and the
-  two-call wiring. Verified three ways: 8 acceptance tests in `SampleAppTests`, a
-  Designer smoke test that constructs `MainForm` (its Designer file is hand-written
-  per D14), and an actual process launch confirming the window opens.
-  - **The sample runs its scripts** via `Microsoft.CodeAnalysis.CSharp.Scripting`
-    (5.9.0, matching the Roslyn Core already brings). An editor whose contents never
-    execute is unconvincing; this shows the whole loop — ask, accept, run.
-  - **`SampleAppTests` is the real acceptance test for the easy path**, because it
-    runs against an ordinary app rather than purpose-built fixtures. It pins the two
-    silent-failure modes: the context-file prose actually reaching the blurb, and
-    XML documentation actually reaching `lookup_symbol`.
-  - The orientation blurb was reviewed by eye, not just asserted on. It reads:
-    host prose, then `- \`ScriptGlobals\`: API, LowerLimitMm, UpperLimitMm` and
-    `- \`API\`: FailCount, Log, Measure, Parts, PassCount, Record`.
-  - **Finding worth carrying into the docs**: an adopting app must set
-    `GenerateDocumentationFile`, or every lookup returns a correct signature with no
-    documentation and nothing looks wrong. Called out in the sample's `.csproj`
-    comment and its readme; belongs in the main README too (item 6).
-
-### Parked, not deleted
+## Parked, not deleted
 
 - **Job 6 (host-registered tools)** and **Job 7 (settings chat)** — below, with
   evidence. Out of scope per D21; revisit only with a real customer.
@@ -402,6 +134,10 @@ chatPanel.UseStoredKey("MyApp");
 - **Job 2 (local/self-hosted models)** — parked, but it is the cheapest route to a
   demo a stranger can run without a cloud key, and the only answer if inspection or
   customer data must not leave site.
+- **Job 8 (prompt history)** — *not* parked: small, self-contained, blocked on
+  nothing, and inside D21's scope. Its slice **8a** (restore the input box after a
+  failed turn) is a few lines and fixes a real loss of the user's typing — the
+  cheapest worthwhile thing in this file.
 
 ## Job 6 — Host-registered tools
 
@@ -485,15 +221,130 @@ So this job depends on **Job 6**.
 - [ ] Sample: extend Job 5's ordinary-app sample with a settings object, so the
   "query and configure" story is demonstrated rather than described.
 
+## Job 8 — Prompt history: see and re-use earlier prompts in the current conversation
+
+**The use case.** A user types a careful prompt, gets a result, and wants that
+prompt back — to send it again after a change, to tweak one clause and retry, or
+just to paste it somewhere else. Today there is no way to get it back into the
+input box, and one specific case loses it outright (finding 2 below).
+Conversation-scoped recall, not a saved prompt library.
+
+### Measured first, not assumed (2026-08-24)
+
+Five findings, all checked against the code. Three of them change what this job
+should be.
+
+1. **The data already exists and needs no new store.**
+   `ScriptChatSession.Turns` is a public `IReadOnlyList<ChatTurn>`, and a user
+   prompt is exactly `ChatTurn { Role = ChatTurnRole.User, Text = "…" }`. Prompt
+   history is a `Where(...).Select(t => t.Text)` over something already public.
+   **Do not add a parallel history list** — a second copy could disagree with the
+   transcript, and it would be new content-bearing state to justify against D17.
+2. **A failed turn already loses the user's text, and that is the sharpest pain
+   here.** `SendCurrentInputAsync` calls `_inputTextBox.Clear()` *before*
+   `SendAsync`, and the `catch` does not put it back — it appends "That turn
+   failed: …" to the transcript and leaves the box empty. So a provider error, a
+   network blip or a bad key means retyping the prompt from memory. The text is
+   not truly gone (`ScriptChatSession` records the user turn *before*
+   `GetResponseAsync`, so it survives in `Turns`), it is just unreachable from
+   the UI. **Worth fixing on its own, ahead of any history UI, and it is a
+   handful of lines.**
+3. **Select-and-copy already works.** `_transcriptTextBox` is a
+   `CDS.Markdown.MarkdownTextBox`, which derives from `RichTextBox` and defaults
+   to `ReadOnly = true` — verified by reflection, because the Designer file never
+   sets it either way. So the "or at least clipboard them" half of the request is
+   *already possible*: drag-select the prompt and Ctrl+C. What is missing is
+   precision (freehand selection in a long transcript is fiddly and catches the
+   role caption) and re-use (no way back into the input box).
+4. **History is naturally per-script, for free.** `ScriptChatHostPanel` keeps a
+   `ScriptChatSession` per target, so reading history off the selected session
+   gives each script its own with no extra work.
+5. **New conversation deliberately destroys it.** `Session.Reset()` clears
+   `_turns`, and `StartNewConversation` builds a whole new session — so history
+   dies with the conversation. Correct for the transcript, questionable for
+   prompt recall: "start fresh but let me re-send that prompt" is a plausible
+   want. Left as an open question below rather than silently decided.
+
+### D17 — the constraint that shapes this, and why it is satisfiable
+
+A prompt is content. D17 forbids content-bearing **logs, caches, telemetry and
+diagnostic artifacts** outright rather than behind a flag, so prompt history is
+close enough to a cache that it has to be argued explicitly, not waved through:
+
+- **In-memory, for the lifetime of the session, is already the status quo.**
+  `Turns` holds every prompt today and the transcript renders them on screen.
+  Projecting a list over that adds no new residency and no new lifetime.
+- **Nothing may be written to disk. Ever.** No history file, no MRU list beside
+  `ProviderPreferenceFile`, no `Properties.Settings`, no registry — that is a
+  persistent content cache and a straight D17 violation.
+- **Nothing may be logged.** Counts and lengths only, per the existing
+  `ScriptChatLog` discipline. Never the prompt text, at any level.
+- **The clipboard is the user's own deliberate act** and is fine — that is the
+  user moving their own text, not the library retaining it.
+
+If any of the above starts to feel negotiable, stop and re-read D17: "just a
+convenience cache" is exactly the shape that rule exists to refuse.
+
+### Recommendation — three slices, smallest first, each shippable alone
+
+- [ ] **8a — Restore the input box when a turn fails.** In
+  `SendCurrentInputAsync`'s `catch`, put `userMessage` back into `_inputTextBox`
+  (only when the user has not already typed something else) so a failed send is
+  one keypress from a retry rather than a retype. No new API, no new state, no
+  history UI. **This is most of the real-world value in this job and should not
+  wait for the rest of it.** Test: a `FakeChatClient` that throws leaves the
+  prompt in the box.
+- [ ] **8b — Up/Down arrow recall in the input box.** Terminal-style: Up walks
+  back through this conversation's user prompts, Down forward. Costs no screen
+  space, needs no Designer change, and is what people already expect from a
+  prompt box. The details that decide whether it feels right rather than
+  annoying:
+  - Only intercept Up when the caret is on the **first** line (Down on the last),
+    so arrows still navigate normally inside a multi-line prompt.
+    `_inputTextBox` is `Multiline = true`, so this matters.
+  - Keep a transient draft of whatever was typed before the first Up and restore
+    it when walking forward past the newest entry — losing an in-progress prompt
+    to a stray Up would be worse than having no history at all.
+  - Reset the recall index on send and on target switch; skip consecutive
+    duplicates.
+  - Extend the existing `OnInputTextBoxKeyDown`, which already owns
+    Enter/Shift+Enter/Ctrl+Enter — the arrow keys belong in the same place.
+- [ ] **8c — A visible history affordance, only if 8a+8b prove insufficient.** A
+  small button beside Send opening a list of this conversation's prompts, each
+  with "Insert into input box" and "Copy". The only slice that touches the
+  Designer (D14: real `.Designer.cs`, no code-only layout) and the only one
+  costing screen space in a panel typically ~380px wide. **Do not build this
+  first.** If Up/Down covers it, this is UI nobody needs; a `ContextMenuStrip`
+  on the input box is the cheaper middle ground if a discoverable entry point
+  turns out to be wanted.
+
+### Open questions — decide before building 8b, not during
+
+- **Should history outlive "New conversation"?** Finding 5. Reading straight off
+  the session is the clean implementation and answers "no". Answering "yes" means
+  the panel holding prompt strings *outside* any session — new content-bearing
+  state needing its own D17 argument and its own clearing rule. Recommendation:
+  **start with "no"**; it is honest, free, and "New conversation" reads as a
+  deliberate reset. Revisit only if it bites in use.
+- **Should the panel expose history as public API?** `Turns` is already public,
+  so a host wanting to render its own can do it today in two lines of LINQ; a
+  `ScriptChatPanel.PromptHistory` property would be a second way to say the same
+  thing. Recommendation: **no new API** unless a host asks.
+
+### Not in scope
+
+- **Persisting prompts across app restarts** — D17, unambiguously. Not "later",
+  not "opt-in": the capability does not belong in this library.
+- **A curated prompt/snippet library.** Reasonable product idea, different
+  feature, and arguably outside D21. If ever wanted it is the *host's* to own —
+  the host already controls the input box's contents through the panel.
+- **Editing or re-running a previous turn in place.** That is transcript
+  mutation and conflicts with the one-pending-proposal rule; a recalled prompt is
+  a new turn at the end, like anything else.
+
 ---
 
 ## Known issues (small, not full jobs — tracked so they don't get lost)
-
-- [x] **`ScriptChatSessionOptions.LoggerFactory`'s XML documentation contradicted
-  D17** — it still claimed `Trace` records prompt and response content, a
-  capability D17 removed outright. *Fixed 2026-08-24* as part of Job 5 item 4;
-  it now states that no content is logged at any level and that this is enforced
-  rather than defaulted.
 
 - [ ] **`InputBoxScrollTests.MouseWheel_OverAnOverflowingInputBox_ScrollsIt` is
   flaky.** Drives the real OS mouse cursor and compares pixel bitmaps
@@ -521,10 +372,9 @@ So this job depends on **Job 6**.
 - Jobs 1, 2 and 4 don't block each other, but Job 1 and Job 2 both touch
   `ScriptChatClientFactory` / `ScriptChatClientOptions` — worth sequencing
   them rather than working both in parallel branches to avoid merge friction.
-- ~~**Jobs 5 → 6 → 7 are a chain**~~ — **superseded by D21 (2026-08-24).** Job 5
-  shipped; Jobs 6 and 7 are parked, out of scope. The dependency between them is
-  still real if they are ever revived — Job 7 cannot start before Job 6 — but
-  neither is queued behind anything now.
+- **Job 7 cannot start before Job 6** — it needs host-registered tools to have
+  anywhere to hang a settings write. Both are parked (D21), so neither is queued
+  behind anything today; the dependency only matters if they are revived.
 - **Job 2 is worth pulling forward for the public launch**, out of numeric order.
   "Works with a local model, no cloud key needed" removes the single biggest
   barrier to a stranger trying the library at all — and it needs no new
@@ -532,36 +382,3 @@ So this job depends on **Job 6**.
   already in place.
 - Per the "one milestone per session" project rule, each job (or a sensible
   sub-slice of one) should be its own session rather than mixed together.
-
-## Context for jobs 5–7 (from the OpenCvSharp Workbench review, 2026-08-23)
-
-These jobs came out of reviewing whether the Workbench's Roslyn script tooling
-should be donated here. The full evidence lives in that repo's `docs/todo.md`;
-the parts that matter here:
-
-- ~~**D15 was reconsidered and holds**~~ — **reversed the next day by D22
-  (2026-08-24), after measuring what it actually cost.** The reasoning below was
-  sound about the *risks* and wrong about the *balance*: it never weighed them
-  against the ~473 lines of adapter code every adopter had to write, plus the
-  ~636 lines of Roslyn tooling they had to build first, with the 86-line adapter
-  duplicated verbatim in one repo. Both objections it raises are answered by
-  D21's narrowed scope rather than waved away — every consumer is now, by
-  definition, a scripting host that already loads Roslyn, so neither the size nor
-  the version-diamond argument applies to anyone actually being served. Roslyn
-  ships **in Core**, not in a satellite package. Original reasoning, kept because
-  it is the argument to beat if this is ever revisited:
-  - Size is a weak objection: `Microsoft.CodeAnalysis.dll` is **2.96 MB** deployed
-    against the **11.90 MB** of AI SDKs `CDS.ScriptChat.Core` already ships (+25%),
-    and it has exactly one transitive dependency. The real reasons are **version
-    diamonds** (three Roslyn majors were cached on one dev machine: 4.14.0, 5.6.0,
-    5.9.0 — pinning in Core imposes that on consumers who never call a lookup) and
-    **irreversibility** (Core is live on nuget.org at `V1.1.0`; adding a dependency
-    later is non-breaking, removing one is not).
-- **Microsoft Agent Framework was checked and is not a threat.** It overlaps the
-  bottom of `ScriptChat.Core` — provider plumbing and session state, both on the
-  same `Microsoft.Extensions.AI` foundation — and nothing else. Its UI
-  integrations (AG-UI, ChatKit, DevUI) are **all web**: no WinForms, no WPF, no
-  code-editor or C# code-intelligence story anywhere. Its **CodeAct** is the
-  inverse premise — agent-authored throwaway code in a sandbox, versus this
-  library's human-authored artifact that the user reviews and accepts. Worth
-  knowing; nothing to act on.
