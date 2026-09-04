@@ -337,7 +337,7 @@ in `ScriptChatClientFactory` so it constructs a real `IChatClient` instead of th
   possible to build, but exercising and testing that workflow is separate work
   left for a later milestone.
 - **UC7 (streaming)**, **multi-script host support**, and **local/self-hosted
-  provider support** (both raised as parked feedback in `todo.packaging.md`),
+  provider support** (local providers are now Job 2 in `todo.features.md`),
   and the two "Future milestones" items below — all explicitly deferred, not to
   be picked up opportunistically during milestone 2.
 
@@ -500,10 +500,9 @@ Job 5 / D22.)*
   OpenCvSharp Playground app. Shipped as `ScriptChatTarget` (Core) and
   `ScriptChatHostPanel` (WinForms, `SetTargets(params ScriptChatTarget[])`),
   generalised to any number of targets rather than the Playground's original
-  two — see `todo.packaging.md` for the detail. The Playground has migrated
-  onto it.
+  two. The Playground has migrated onto it.
 - **Local/self-hosted provider** (Ollama, LM Studio, llama.cpp): no base-URL
-  override exists today. Also parked in `todo.packaging.md`. Realistically
+  override exists today; tracked as Job 2 in `todo.features.md`. Realistically
   rides on top of the OpenAI wiring landing in milestone 2, once that's proven.
 
 ---
