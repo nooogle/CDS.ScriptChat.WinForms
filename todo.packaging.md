@@ -163,15 +163,16 @@ open, rather than carried over on trust.
 ## Decisions
 
 - **No `CHANGELOG.md`, and no `PackageReleaseNotes`** (2026-09-03). Now fleet
-  policy rather than a per-repo choice — see `Docs/CI-CD-STANDARDS.md` →
+  policy rather than a per-repo choice — see [`CI-CD-STANDARDS.md`](https://github.com/nooogle/dev-central/blob/master/Docs/CI-CD-STANDARDS.md)
+  in the `nooogle/dev-central` repo →
   "Deliberately not doing: `CHANGELOG.md` and `PackageReleaseNotes`".
   `release.yml` already creates a GitHub Release with
   `generate_release_notes: true`, so a changelog is a second place to say the
   same thing and the two drift; a hardcoded `PackageReleaseNotes` is worse
   still, because nuget.org renders a static string against every future
   version. Nothing in the policy docs ever required either. The habit that
-  replaces them is a descriptive PR title, which is what the generated note is
-  built from — `V1.4.1`'s release reads "Roslyn tooling, multi-script
+  replaces them is a descriptive PR title, since `generate_release_notes`
+  lists the merged PRs by title — `V1.4.1`'s release reads "Roslyn tooling, multi-script
   orientation, status line" for exactly that reason. This repo needed no
   change; `CDS.Markdown`, `CDS.SQLiteLogging` and `CDS.FluentHtmlReports` had
   partially adopted them and are being cleaned up to match.
