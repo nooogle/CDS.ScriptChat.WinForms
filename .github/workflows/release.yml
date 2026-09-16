@@ -22,12 +22,12 @@ jobs:
     environment: nuget
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
 
@@ -66,24 +66,24 @@ jobs:
           dotnet-CycloneDX src/CDS.ScriptChat.WinForms/CDS.ScriptChat.WinForms.csproj -o ./artifacts -F json -fn bom-CDS.ScriptChat.WinForms.json -sv $winFormsVersion
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: ./artifacts/*.nupkg
 
       - name: Attest SBOM — CDS.ScriptChat.Core
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: ./artifacts/CDS.ScriptChat.Core.*.nupkg
           sbom-path: ./artifacts/bom-CDS.ScriptChat.Core.json
 
       - name: Attest SBOM — CDS.ScriptChat.WinForms
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: ./artifacts/CDS.ScriptChat.WinForms.*.nupkg
           sbom-path: ./artifacts/bom-CDS.ScriptChat.WinForms.json
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           files: |
             ./artifacts/*.nupkg
@@ -94,7 +94,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Authenticate with NuGet (Trusted Publishing)
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         id: nuget-auth
         with:
           user: ${{ secrets.NUGET_USER }}
