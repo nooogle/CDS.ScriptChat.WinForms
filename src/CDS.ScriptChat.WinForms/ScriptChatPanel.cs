@@ -281,7 +281,7 @@ public partial class ScriptChatPanel : UserControl
         await SendCurrentInputAsync().ConfigureAwait(true);
     }
 
-    private async Task SendCurrentInputAsync()
+    internal async Task SendCurrentInputAsync()
     {
         if (_turnInFlight || _session is null || ScriptTextProvider is null || _pendingTurnIndex is not null)
         {
@@ -345,6 +345,14 @@ public partial class ScriptChatPanel : UserControl
                 new ChatTurn(ChatTurnRole.Assistant, $"That turn failed: {ex.Message}", null, null, EditDisposition.None),
                 baselineScript: null);
             SetStatus("Last turn failed.");
+
+            // The box was cleared before the call; put the prompt back so a retry is one
+            // keypress, but never over anything the user has typed since.
+            if (_inputTextBox.TextLength == 0)
+            {
+                _inputTextBox.Text = userMessage;
+                _inputTextBox.SelectionStart = _inputTextBox.TextLength;
+            }
         }
         finally
         {
