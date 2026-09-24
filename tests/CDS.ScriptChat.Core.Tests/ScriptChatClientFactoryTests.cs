@@ -104,9 +104,9 @@ public sealed class ScriptChatClientFactoryTests
     }
 
     [TestMethod]
-    public void DefaultForProvider_Claude_IsTheStrongestCodingModel()
+    public void DefaultForProvider_Claude_IsOpus()
     {
         ScriptChatModels.DefaultForProvider(ScriptChatProvider.Claude)
-            .Should().Be("claude-fable-5-1");
+            .Should().Be("claude-opus-5-5");
     }
 }
