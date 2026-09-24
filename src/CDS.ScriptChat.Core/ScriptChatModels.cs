@@ -18,8 +18,8 @@ public static class ScriptChatModels
 
     private static readonly string[] s_openAIModels =
     [
-        "gpt-6-astra",
         "gpt-6-sol",
+        "gpt-6-astra",
         "gpt-6-luna",
     ];
 
