@@ -107,6 +107,6 @@ public sealed class ScriptChatClientFactoryTests
     public void DefaultForProvider_Claude_IsTheStrongestCodingModel()
     {
         ScriptChatModels.DefaultForProvider(ScriptChatProvider.Claude)
-            .Should().Be("claude-opus-5");
+            .Should().Be("claude-fable-5-1");
     }
 }

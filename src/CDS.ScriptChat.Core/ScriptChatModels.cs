@@ -6,24 +6,26 @@ namespace CDS.ScriptChat.Core;
 public static class ScriptChatModels
 {
     /// <summary>The default Claude model — the strongest option for agentic coding work.</summary>
-    public const string ClaudeDefault = "claude-opus-5";
+    public const string ClaudeDefault = "claude-fable-5-1";
 
     private static readonly string[] s_claudeModels =
     [
-        "claude-opus-5",
+        "claude-fable-5-1",
+        "claude-opus-5-5",
         "claude-sonnet-5",
         "claude-haiku-4-5",
     ];
 
     private static readonly string[] s_openAIModels =
     [
-        "gpt-5",
-        "gpt-5-mini",
+        "gpt-6-astra",
+        "gpt-6-sol",
+        "gpt-6-luna",
     ];
 
     private static readonly string[] s_grokModels =
     [
-        "grok-4",
+        "grok-4.7",
     ];
 
     /// <summary>
