@@ -9,12 +9,12 @@ OpenCvSharp-specific; provider-agnostic (Claude/OpenAI/Grok via
 
 ## Read first
 
-`cds.scriptchat.design.md` (repo root) — architecture, decision log (D1–D23),
+`cds.scriptchat.design.md` (repo root) — architecture, decision log (D1–D24),
 use cases, and current status. Read it before writing code. Don't
 duplicate its content here; if a rule from there matters for every session,
 add a one-line pointer below instead of copying it in full.
 
-Then `todo.features.md` → **"Start here"** for what is actually next.
+Then the GitHub issues (`gh issue list`) for what is actually next.
 
 ## Hard rules
 

@@ -305,7 +305,7 @@ last round of API fixes.
 | | |
 |---|---|
 | Grok | Enum value exists; the factory throws. Claude and OpenAI are wired. |
-| Gemini, local/self-hosted models | No base-URL override yet. Local models are the most-wanted of these — see `todo.features.md`. |
+| Gemini, local/self-hosted models | No base-URL override yet. Local models are the most-wanted of these — see [#38](https://github.com/nooogle/CDS.ScriptChat.WinForms/issues/38). |
 | Streaming responses | A turn arrives complete, not token by token. |
 | Per-hunk accept/reject | A patch is accepted or rejected whole. |
 | Image/multi-modal input | Text only. |
@@ -313,8 +313,8 @@ last round of API fixes.
 
 The scope is deliberately **C# script chat and nothing else**. General in-app
 assistants, settings mutation, and MCP transports were each considered and
-parked with the reasoning written down — see [`todo.features.md`](todo.features.md)
-if you want to argue with it.
+parked with the reasoning written down — see D21 in
+[`cds.scriptchat.design.md`](cds.scriptchat.design.md) if you want to argue with it.
 
 ## Building from source
 
@@ -331,9 +331,7 @@ dotnet run --project tests/CDS.ScriptChat.WinForms.Tests
 ```
 
 To try the panel from another app on this machine before it's on NuGet.org,
-`pack-local.ps1` packs both projects to a local feed — see
-[`todo.packaging.md`](todo.packaging.md) for the current packaging and release
-status.
+`pack-local.ps1` packs both projects to a local feed.
 
 ## License
 

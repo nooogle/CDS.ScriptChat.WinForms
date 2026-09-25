@@ -20,12 +20,6 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<!-- The CSV writer's quoting and escaping rules are worth testing even though this is a
-		     sample: silently malformed rows would make the log misleading rather than absent. -->
-		<InternalsVisibleTo Include="CDS.ScriptChat.WinForms.Tests" />
-	</ItemGroup>
-
-	<ItemGroup>
 		<!-- Demonstrates the file half of D12: the panel finds this beside the executable. -->
 		<Content Include="scriptchat.context.md">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

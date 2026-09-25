@@ -17,13 +17,11 @@
 		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
 		<PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.4.1" />
 		<PackageReference Include="AwesomeAssertions" Version="9.6.0" />
+		<PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.12" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\src\CDS.ScriptChat.WinForms\CDS.ScriptChat.WinForms.csproj" />
-
-		<!-- The sample host owns the CSV logging provider, so its formatting is covered here. -->
-		<ProjectReference Include="..\..\samples\CDS.ScriptChat.TestHost\CDS.ScriptChat.TestHost.csproj" />
 		<!-- The adoption sample is the acceptance test for the easy path: if what it wires up
 		     stops producing a usable orientation and lookup, the quickstart is broken. -->
 		<ProjectReference Include="..\..\samples\CDS.ScriptChat.SampleApp\CDS.ScriptChat.SampleApp.csproj" />
@@ -36,6 +34,11 @@
 		<!-- The same host-shaped API fixtures the Core tests use, so AddScript is exercised
 		     against a realistic globals type rather than a second set of stand-ins. -->
 		<Compile Include="..\CDS.ScriptChat.Core.Tests\SampleScriptTypes.cs" Link="SampleScriptTypes.cs" />
+		<!-- The CSV writer's quoting and escaping rules are worth testing even though it lives in a
+		     sample: silently malformed rows would make the log misleading rather than absent. Linked
+		     rather than referenced, because referencing the TestHost also copies its
+		     scriptchat.context.md here, where it collides with the SampleApp's. -->
+		<Compile Include="..\..\samples\CDS.ScriptChat.TestHost\Logging\*.cs" Link="TestHostLogging\%(Filename)%(Extension)" />
 	</ItemGroup>
 
 </Project>
