@@ -24,7 +24,7 @@
 		<!-- Runs the script. Nothing to do with the chat library — it is here so the sample shows
 		     the whole loop (ask, accept, run) rather than an editor whose contents never execute.
 		     Version matches the Roslyn the chat library already brings, so no diamond. -->
-		<PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.9.0" />
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.12.0" />
 	</ItemGroup>
 
 	<ItemGroup>
