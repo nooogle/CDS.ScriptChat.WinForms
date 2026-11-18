@@ -20,10 +20,12 @@ namespace CDS.ScriptChat.WinForms;
 /// </remarks>
 public partial class ScriptChatSettingsPanel : UserControl
 {
+    private readonly Dictionary<ScriptChatProvider, IReadOnlyList<string>> _fetchedModelIds = [];
     private IApiKeyStore? _keyStore;
     private ILoggerFactory? _loggerFactory;
     private ILogger _logger = NullLogger.Instance;
     private bool _suppressProviderChange;
+    private CancellationTokenSource? _modelFetchCancellation;
 
     /// <summary>Initialises a new instance of the <see cref="ScriptChatSettingsPanel"/> class.</summary>
     public ScriptChatSettingsPanel()
@@ -38,8 +40,8 @@ public partial class ScriptChatSettingsPanel : UserControl
     public event EventHandler<ScriptChatConfigurationEventArgs>? ConfigurationApplied;
 
     /// <summary>
-    /// Gets or sets where API keys are kept between sessions. Leave unset to keep keys in
-    /// memory for the lifetime of the panel only.
+    /// Gets or sets where API keys are kept between sessions. Leave unset to keep the entered key
+    /// in memory only, until the provider is changed.
     /// </summary>
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -50,8 +52,21 @@ public partial class ScriptChatSettingsPanel : UserControl
         {
             _keyStore = value;
             LoadStoredKeyForSelectedProvider();
+            _ = RefreshModelsAsync();
         }
     }
+
+    /// <summary>
+    /// Gets or sets where every new panel gets its live model list from. Tests replace it so that
+    /// constructing a panel with a stored key never reaches a real provider.
+    /// </summary>
+    internal static Func<ScriptChatProvider, string, CancellationToken, Task<IReadOnlyList<ScriptChatModelInfo>>> DefaultModelListSource { get; set; } =
+        ScriptChatModelCatalog.ListModelsAsync;
+
+    /// <summary>Gets or sets where this panel gets its live model list from.</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal Func<ScriptChatProvider, string, CancellationToken, Task<IReadOnlyList<ScriptChatModelInfo>>> ModelListSource { get; set; } =
+        DefaultModelListSource;
 
     /// <summary>
     /// Gets or sets the factory the panel logs through, including the connection test it runs.
@@ -140,20 +155,93 @@ public partial class ScriptChatSettingsPanel : UserControl
     private void PopulateModelsForSelectedProvider()
     {
         var provider = SelectedProvider;
+        var modelIds = _fetchedModelIds.TryGetValue(provider, out var fetched)
+            ? fetched
+            : ScriptChatModels.ForProvider(provider);
 
-        _modelComboBox.Items.Clear();
-        foreach (var model in ScriptChatModels.ForProvider(provider))
+        ReplaceModelItems(modelIds);
+        _modelComboBox.Text = ScriptChatModels.DefaultForProvider(provider);
+    }
+
+    /// <summary>
+    /// Replaces the built-in model list with the one the provider reports for the entered key,
+    /// once per provider for the life of the panel. Any failure leaves the built-in list in place.
+    /// </summary>
+    internal async Task RefreshModelsAsync()
+    {
+        var provider = SelectedProvider;
+        var apiKey = _apiKeyTextBox.Text.Trim();
+        if (apiKey.Length == 0
+            || !ScriptChatModelCatalog.CanListModels(provider)
+            || _fetchedModelIds.ContainsKey(provider))
         {
-            _modelComboBox.Items.Add(model);
+            return;
         }
 
-        _modelComboBox.Text = ScriptChatModels.DefaultForProvider(provider);
+        _modelFetchCancellation?.Cancel();
+        var cancellation = new CancellationTokenSource();
+        _modelFetchCancellation = cancellation;
+
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            var models = await ModelListSource(provider, apiKey, cancellation.Token).ConfigureAwait(true);
+            _logger.ModelListFetched(provider, stopwatch.ElapsedMilliseconds, models.Count);
+
+            if (models.Count == 0)
+            {
+                return;
+            }
+
+            var modelIds = models.Select(model => model.Id).ToArray();
+            _fetchedModelIds[provider] = modelIds;
+
+            if (!IsDisposed && SelectedProvider == provider)
+            {
+                var entered = _modelComboBox.Text;
+                ReplaceModelItems(modelIds);
+                _modelComboBox.Text = entered;
+            }
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger.ModelListFetchFailed(ex, provider, stopwatch.ElapsedMilliseconds);
+
+            if (!IsDisposed && SelectedProvider == provider)
+            {
+                SetStatus($"Could not fetch the model list: {ex.Message}");
+            }
+        }
+    }
+
+    private void ReplaceModelItems(IReadOnlyList<string> modelIds)
+    {
+        _modelComboBox.BeginUpdate();
+        try
+        {
+            _modelComboBox.Items.Clear();
+            foreach (var modelId in modelIds)
+            {
+                _modelComboBox.Items.Add(modelId);
+            }
+        }
+        finally
+        {
+            _modelComboBox.EndUpdate();
+        }
     }
 
     private void LoadStoredKeyForSelectedProvider()
     {
         if (_keyStore is null)
         {
+            // The box is not tied to a provider, so a key left in it would be sent to the newly
+            // selected one by the next Test or model-list fetch.
+            _apiKeyTextBox.Clear();
             return;
         }
 
@@ -181,6 +269,8 @@ public partial class ScriptChatSettingsPanel : UserControl
         SetStatus(string.Empty);
 
         _logger.ProviderSelectionChanged(SelectedProvider, SelectedModelId, HasApiKey);
+
+        _ = RefreshModelsAsync();
     }
 
     private void OnApplyButtonClick(object? sender, EventArgs e)
@@ -205,6 +295,8 @@ public partial class ScriptChatSettingsPanel : UserControl
         SetStatus($"Applied {options.Provider} · {options.ModelId}.");
         _logger.ConfigurationApplied(options.Provider, options.ModelId, options.ApiKey.Length);
         ConfigurationApplied?.Invoke(this, new ScriptChatConfigurationEventArgs(options));
+
+        _ = RefreshModelsAsync();
     }
 
     private async void OnTestButtonClick(object? sender, EventArgs e)
@@ -246,6 +338,8 @@ public partial class ScriptChatSettingsPanel : UserControl
                 stopwatch.ElapsedMilliseconds,
                 options.Provider,
                 response.Text?.Length ?? 0);
+
+            _ = RefreshModelsAsync();
         }
         catch (Exception ex)
         {

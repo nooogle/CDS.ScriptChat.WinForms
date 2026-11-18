@@ -1,7 +1,8 @@
 namespace CDS.ScriptChat.Core;
 
 /// <summary>
-/// The model choices the settings panel offers per provider.
+/// The default model per provider, and the model choices the settings panel falls back to when
+/// <see cref="ScriptChatModelCatalog"/> cannot fetch the live list (D25).
 /// </summary>
 public static class ScriptChatModels
 {
@@ -11,9 +12,9 @@ public static class ScriptChatModels
     private static readonly string[] s_claudeModels =
     [
         "claude-opus-5-5",
-        "claude-fable-5-1",
-        "claude-sonnet-5",
-        "claude-haiku-4-5",
+        "claude-fable-5-2",
+        "claude-sonnet-5-5",
+        "claude-haiku-5-5",
     ];
 
     private static readonly string[] s_openAIModels =

@@ -39,7 +39,7 @@ public partial class MainForm : Form
     /// has a parameterless constructor (D14). The application itself uses the overload.
     /// </remarks>
     public MainForm()
-        : this(NullLoggerFactory.Instance, logFilePath: null)
+        : this(NullLoggerFactory.Instance, logFilePath: null, useStoredKeys: true)
     {
     }
 
@@ -54,8 +54,12 @@ public partial class MainForm : Form
     /// The CSV file this run is writing, shown at the bottom of the window so it can be opened
     /// while the app is still running. <see langword="null"/> when nothing is being written.
     /// </param>
+    /// <param name="useStoredKeys">
+    /// <see langword="false"/> for the <c>--demo</c> runs, so UI automation never loads the user's
+    /// saved key — the settings panel would otherwise use it to fetch the live model list.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="loggerFactory"/> is <see langword="null"/>.</exception>
-    public MainForm(ILoggerFactory loggerFactory, string? logFilePath)
+    public MainForm(ILoggerFactory loggerFactory, string? logFilePath, bool useStoredKeys)
     {
         ArgumentNullException.ThrowIfNull(loggerFactory);
 
@@ -70,7 +74,7 @@ public partial class MainForm : Form
 
         WireLogging();
         WireChatPanelToTheEditor();
-        WireSettingsPanel();
+        WireSettingsPanel(useStoredKeys);
 
         _logger.LogInformation(
             "Test host started. LogFile={LogFile} StarterScriptLength={StarterScriptLength}",
@@ -107,11 +111,15 @@ public partial class MainForm : Form
         _chatPanel.SetUnavailable("Enter your API key above, then choose Apply.");
     }
 
-    private void WireSettingsPanel()
+    private void WireSettingsPanel(bool useStoredKeys)
     {
-        _settingsPanel.KeyStore = DpapiApiKeyStore.ForApplication(
-            Program.ApplicationName,
-            _loggerFactory.CreateLogger<DpapiApiKeyStore>());
+        if (useStoredKeys)
+        {
+            _settingsPanel.KeyStore = DpapiApiKeyStore.ForApplication(
+                Program.ApplicationName,
+                _loggerFactory.CreateLogger<DpapiApiKeyStore>());
+        }
+
         _settingsPanel.ConfigurationApplied += OnConfigurationApplied;
     }
 

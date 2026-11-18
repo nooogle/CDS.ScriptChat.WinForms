@@ -31,4 +31,10 @@
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.15" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<!-- ScriptChatModelCatalog's fake-transport overload, so the model-list wire format is
+		     tested without a public HttpMessageHandler parameter. -->
+		<InternalsVisibleTo Include="CDS.ScriptChat.Core.Tests" />
+	</ItemGroup>
+
 </Project>

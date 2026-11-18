@@ -11,8 +11,8 @@ using OpenAI;
 namespace CDS.ScriptChat.Core;
 
 /// <summary>
-/// Constructs an <see cref="IChatClient"/> for a provider. This is the only place in the
-/// library that knows Claude, OpenAI, or Grok exist (D2).
+/// Constructs an <see cref="IChatClient"/> for a provider. With <see cref="ScriptChatModelCatalog"/>,
+/// the only place in the library that knows Claude, OpenAI, or Grok exist (D2, D25).
 /// </summary>
 public static class ScriptChatClientFactory
 {
