@@ -193,6 +193,28 @@ internal static partial class ScriptChatWinFormsLog
         ScriptChatProvider provider);
 
     [LoggerMessage(
+        EventId = 2120,
+        EventName = "ModelListFetched",
+        Level = LogLevel.Information,
+        Message = "Fetched the {Provider} model list in {ElapsedMs}ms. ModelCount={ModelCount}")]
+    public static partial void ModelListFetched(
+        this ILogger logger,
+        ScriptChatProvider provider,
+        long elapsedMs,
+        int modelCount);
+
+    [LoggerMessage(
+        EventId = 2121,
+        EventName = "ModelListFetchFailed",
+        Level = LogLevel.Warning,
+        Message = "Could not fetch the {Provider} model list after {ElapsedMs}ms; keeping the built-in list.")]
+    public static partial void ModelListFetchFailed(
+        this ILogger logger,
+        Exception exception,
+        ScriptChatProvider provider,
+        long elapsedMs);
+
+    [LoggerMessage(
         EventId = 2200,
         EventName = "ApiKeyLoaded",
         Level = LogLevel.Information,

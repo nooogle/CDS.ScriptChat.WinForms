@@ -127,6 +127,92 @@ public sealed class ScriptChatSettingsPanelTests
         panel.BuildClientOptions().ApiKey.Should().Be("openai-key");
     }
 
+    [TestMethod]
+    public async Task RefreshModels_ProviderReturnsAList_ShowsItInOrderAndKeepsTheEnteredModel()
+    {
+        var store = new InMemoryApiKeyStore();
+        store.Save(ScriptChatProvider.Claude, "claude-key");
+        using var panel = new ScriptChatSettingsPanel
+        {
+            ModelListSource = (_, _, _) => Task.FromResult<IReadOnlyList<ScriptChatModelInfo>>(
+            [
+                new("claude-newest", null, new DateTimeOffset(2026, 11, 1, 0, 0, 0, TimeSpan.Zero)),
+                new("claude-older", null, new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)),
+            ]),
+            KeyStore = store,
+        };
+
+        await panel.RefreshModelsAsync();
+
+        ModelItems(panel).Should().Equal("claude-newest", "claude-older");
+        panel.SelectedModelId.Should().Be(ScriptChatModels.ClaudeDefault);
+    }
+
+    [TestMethod]
+    public async Task RefreshModels_FetchFails_KeepsTheBuiltInListAndSaysSo()
+    {
+        var store = new InMemoryApiKeyStore();
+        store.Save(ScriptChatProvider.Claude, "claude-key");
+        using var panel = new ScriptChatSettingsPanel
+        {
+            ModelListSource = (_, _, _) => Task.FromException<IReadOnlyList<ScriptChatModelInfo>>(
+                new HttpRequestException("401 Unauthorized")),
+            KeyStore = store,
+        };
+
+        await panel.RefreshModelsAsync();
+
+        ModelItems(panel).Should().Equal(ScriptChatModels.ForProvider(ScriptChatProvider.Claude));
+        StatusText(panel).Should().Contain("Could not fetch the model list");
+    }
+
+    [TestMethod]
+    public async Task RefreshModels_NoKey_NeverAsksTheProvider()
+    {
+        var asked = false;
+        using var panel = new ScriptChatSettingsPanel
+        {
+            ModelListSource = (_, _, _) =>
+            {
+                asked = true;
+                return Task.FromResult<IReadOnlyList<ScriptChatModelInfo>>([]);
+            },
+        };
+
+        await panel.RefreshModelsAsync();
+
+        asked.Should().BeFalse();
+    }
+
+    [TestMethod]
+    public async Task RefreshModels_Grok_NeverAsksTheProvider()
+    {
+        var store = new InMemoryApiKeyStore();
+        store.Save(ScriptChatProvider.Grok, "grok-key");
+        var asked = false;
+        using var panel = new ScriptChatSettingsPanel
+        {
+            ModelListSource = (_, _, _) =>
+            {
+                asked = true;
+                return Task.FromResult<IReadOnlyList<ScriptChatModelInfo>>([]);
+            },
+            KeyStore = store,
+        };
+        SelectProvider(panel, ScriptChatProvider.Grok);
+
+        await panel.RefreshModelsAsync();
+
+        asked.Should().BeFalse();
+    }
+
+    private static IEnumerable<string> ModelItems(ScriptChatSettingsPanel panel) =>
+        panel.Controls.Find("_modelComboBox", searchAllChildren: true)
+            .OfType<ComboBox>().Single().Items.Cast<string>();
+
+    private static string StatusText(ScriptChatSettingsPanel panel) =>
+        panel.Controls.Find("_statusLabel", searchAllChildren: true).Single().Text;
+
     private static void ClickButton(ScriptChatSettingsPanel panel, string name) =>
         panel.Controls.Find(name, searchAllChildren: true).OfType<Button>().Single().PerformClick();
 
