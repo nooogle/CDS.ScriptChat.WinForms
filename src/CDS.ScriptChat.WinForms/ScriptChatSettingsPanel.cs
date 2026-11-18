@@ -40,8 +40,8 @@ public partial class ScriptChatSettingsPanel : UserControl
     public event EventHandler<ScriptChatConfigurationEventArgs>? ConfigurationApplied;
 
     /// <summary>
-    /// Gets or sets where API keys are kept between sessions. Leave unset to keep keys in
-    /// memory for the lifetime of the panel only.
+    /// Gets or sets where API keys are kept between sessions. Leave unset to keep the entered key
+    /// in memory only, until the provider is changed.
     /// </summary>
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -239,6 +239,9 @@ public partial class ScriptChatSettingsPanel : UserControl
     {
         if (_keyStore is null)
         {
+            // The box is not tied to a provider, so a key left in it would be sent to the newly
+            // selected one by the next Test or model-list fetch.
+            _apiKeyTextBox.Clear();
             return;
         }
 

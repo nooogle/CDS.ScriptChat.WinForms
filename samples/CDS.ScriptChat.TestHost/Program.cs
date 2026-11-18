@@ -39,13 +39,16 @@ internal static class Program
             builder.AddDebug();
         });
 
-        var mainForm = new MainForm(loggerFactory, csvProvider.FilePath);
+        var markdownDemo = Array.IndexOf(args, "--demo=markdown") >= 0;
+        var patchDemo = !markdownDemo && Array.IndexOf(args, "--demo=patch") >= 0;
 
-        if (Array.IndexOf(args, "--demo=markdown") >= 0)
+        var mainForm = new MainForm(loggerFactory, csvProvider.FilePath, useStoredKeys: !markdownDemo && !patchDemo);
+
+        if (markdownDemo)
         {
             mainForm.SeedMarkdownDemoAsync().GetAwaiter().GetResult();
         }
-        else if (Array.IndexOf(args, "--demo=patch") >= 0)
+        else if (patchDemo)
         {
             mainForm.SeedPatchDemoAsync().GetAwaiter().GetResult();
         }

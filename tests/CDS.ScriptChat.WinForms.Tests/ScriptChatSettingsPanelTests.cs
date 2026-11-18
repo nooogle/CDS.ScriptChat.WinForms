@@ -206,6 +206,26 @@ public sealed class ScriptChatSettingsPanelTests
         asked.Should().BeFalse();
     }
 
+    [TestMethod]
+    public void SelectedProvider_ChangedWithNoKeyStore_ClearsTheKeyAndNeverSendsItToTheNewProvider()
+    {
+        var askedWith = new List<ScriptChatProvider>();
+        using var panel = new ScriptChatSettingsPanel
+        {
+            ModelListSource = (provider, _, _) =>
+            {
+                askedWith.Add(provider);
+                return Task.FromResult<IReadOnlyList<ScriptChatModelInfo>>([]);
+            },
+        };
+        SetApiKey(panel, "sk-ant-typed-in");
+
+        SelectProvider(panel, ScriptChatProvider.OpenAI);
+
+        panel.HasApiKey.Should().BeFalse();
+        askedWith.Should().NotContain(ScriptChatProvider.OpenAI);
+    }
+
     private static IEnumerable<string> ModelItems(ScriptChatSettingsPanel panel) =>
         panel.Controls.Find("_modelComboBox", searchAllChildren: true)
             .OfType<ComboBox>().Single().Items.Cast<string>();
