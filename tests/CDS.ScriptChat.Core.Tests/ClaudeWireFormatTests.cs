@@ -83,6 +83,27 @@ public sealed class ClaudeWireFormatTests
     }
 
     [TestMethod]
+    public async Task GetResponseAsync_OptionsWithToolsButNoMaxOutputTokens_SendsTheConfiguredDefaultAndTheTools()
+    {
+        // ScriptChatSession.SendAsync always passes ChatOptions { Tools = ... } with no token
+        // limit, so the default must still apply when options are present but the limit is unset.
+        var handler = new RecordingHttpMessageHandler(TextResponseBody);
+        var chatClient = BuildWireLevelClaudeChatClient("claude-sonnet-5-5", maxOutputTokens: 4321, handler);
+        var tool = AIFunctionFactory.Create((string newScript) => newScript, "propose_script_edit");
+
+        await chatClient.GetResponseAsync(
+            [new ChatMessage(ChatRole.User, "Hello")],
+            new ChatOptions { Tools = [tool] });
+
+        using var requestJson = JsonDocument.Parse(handler.RequestBodies.Single());
+        var root = requestJson.RootElement;
+        root.GetProperty("max_tokens").GetInt64().Should().Be(4321);
+        root.GetProperty("tools").EnumerateArray()
+            .Select(t => t.GetProperty("name").GetString())
+            .Should().ContainSingle().Which.Should().Be("propose_script_edit");
+    }
+
+    [TestMethod]
     public async Task GetResponseAsync_ExplicitMaxOutputTokensOnTheCall_IsNotOverriddenByTheConfiguredDefault()
     {
         // Mirrors ScriptChatSettingsPanel's "Test connection" button, which passes
