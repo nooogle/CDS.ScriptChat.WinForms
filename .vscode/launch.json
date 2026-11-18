@@ -5,6 +5,17 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Debug SampleApp",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build-sampleapp",
+            "program": "${workspaceFolder}/samples/CDS.ScriptChat.SampleApp/bin/Debug/net10.0-windows/CDS.ScriptChat.SampleApp.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}/samples/CDS.ScriptChat.SampleApp/bin/Debug/net10.0-windows",
+            "console": "internalConsole",
+            "stopAtEntry": false
+        },
+        {
             "name": "Debug TestHost",
             "type": "coreclr",
             "request": "launch",
