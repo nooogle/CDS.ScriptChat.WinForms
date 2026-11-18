@@ -5,7 +5,7 @@ namespace CDS.ScriptChat.Core.Tests;
 
 /// <summary>
 /// An <see cref="HttpMessageHandler"/> that records every request it sees and replays scripted
-/// responses, so the real OpenAI SDK's request/response wire format can be exercised without a
+/// responses, so a real provider SDK's request/response wire format can be exercised without a
 /// network call or a real API key.
 /// </summary>
 internal sealed class RecordingHttpMessageHandler : HttpMessageHandler
