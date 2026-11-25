@@ -91,6 +91,30 @@ public sealed class RoslynSymbolResolverTests
     }
 
     [TestMethod]
+    public void Resolve_WithAGenericTypeNestedInAGenericType_GivesEachLevelItsOwnArguments()
+    {
+        // Reflection lists Outer<int>.Inner<string>'s arguments as [int, string]; Roslyn's Inner
+        // takes only its own, so passing both to Construct throws.
+        var resolver = new RoslynSymbolResolver([TestNamespace], typeof(SampleGenericGlobals<SampleSettings>));
+
+        var result = resolver.Resolve(Compilation, "Find", "Nested");
+
+        result.Should().NotBeNull();
+        result!.Signature.Should().Contain("SampleOuter<int>.Inner<string>.Find(int key)");
+    }
+
+    [TestMethod]
+    public void Resolve_WithANonGenericTypeNestedInAGenericType_ConstructsOnlyTheOuterType()
+    {
+        var resolver = new RoslynSymbolResolver([TestNamespace], typeof(SampleGenericGlobals<SampleSettings>));
+
+        var result = resolver.Resolve(Compilation, "Read", "NestedPlain");
+
+        result.Should().NotBeNull();
+        result!.Signature.Should().Contain("SampleOuter<int>.Plain.Read()");
+    }
+
+    [TestMethod]
     public void Resolve_WithAWrongDeclaringType_FallsBackRatherThanReportingAMiss()
     {
         var result = CreateResolver().Resolve(Compilation, "SetValue", "SampleApi");
