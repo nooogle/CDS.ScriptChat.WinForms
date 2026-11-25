@@ -67,6 +67,54 @@ public sealed class RoslynSymbolResolverTests
     }
 
     [TestMethod]
+    public void Resolve_WithAConstructedGenericRoot_SearchesItsMembersInTheConcreteTypes()
+    {
+        // A constructed generic's FullName carries assembly-qualified type arguments, which no
+        // metadata name lookup matches — so the root used to be skipped silently.
+        var resolver = new RoslynSymbolResolver([TestNamespace], typeof(SampleGenericGlobals<SampleSettings>));
+
+        var result = resolver.Resolve(Compilation, "ResetSettings", containingType: null);
+
+        result.Should().NotBeNull();
+        result!.Signature.Should().Contain("SampleGenericGlobals<SampleSettings>.ResetSettings()");
+    }
+
+    [TestMethod]
+    public void Resolve_WithAGlobalsPropertyOfAConstructedGenericType_ResolvesToTheTypeBehindIt()
+    {
+        var resolver = new RoslynSymbolResolver([TestNamespace], typeof(SampleGenericGlobals<SampleSettings>));
+
+        var result = resolver.Resolve(Compilation, "Get", "Slots");
+
+        result.Should().NotBeNull();
+        result!.Signature.Should().Contain("SampleSlots<SamplePanel>.Get(int index)");
+    }
+
+    [TestMethod]
+    public void Resolve_WithAGenericTypeNestedInAGenericType_GivesEachLevelItsOwnArguments()
+    {
+        // Reflection lists Outer<int>.Inner<string>'s arguments as [int, string]; Roslyn's Inner
+        // takes only its own, so passing both to Construct throws.
+        var resolver = new RoslynSymbolResolver([TestNamespace], typeof(SampleGenericGlobals<SampleSettings>));
+
+        var result = resolver.Resolve(Compilation, "Find", "Nested");
+
+        result.Should().NotBeNull();
+        result!.Signature.Should().Contain("SampleOuter<int>.Inner<string>.Find(int key)");
+    }
+
+    [TestMethod]
+    public void Resolve_WithANonGenericTypeNestedInAGenericType_ConstructsOnlyTheOuterType()
+    {
+        var resolver = new RoslynSymbolResolver([TestNamespace], typeof(SampleGenericGlobals<SampleSettings>));
+
+        var result = resolver.Resolve(Compilation, "Read", "NestedPlain");
+
+        result.Should().NotBeNull();
+        result!.Signature.Should().Contain("SampleOuter<int>.Plain.Read()");
+    }
+
+    [TestMethod]
     public void Resolve_WithAWrongDeclaringType_FallsBackRatherThanReportingAMiss()
     {
         var result = CreateResolver().Resolve(Compilation, "SetValue", "SampleApi");

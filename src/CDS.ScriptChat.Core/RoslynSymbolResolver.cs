@@ -203,9 +203,105 @@ public sealed class RoslynSymbolResolver
 
         // Checked last, not first: a host is free to have a property whose name is also a real
         // type name, and the type is the better answer when both exist.
-        return _rootProperties.TryGetValue(name, out var propertyType) && propertyType.FullName is { } fullName
-            ? compilation.GetTypeByMetadataName(fullName)
+        return _rootProperties.TryGetValue(name, out var propertyType)
+            ? ResolveNamedType(compilation, propertyType)
             : null;
+    }
+
+    /// <summary>
+    /// Finds the compilation's symbol for a reflection type, or <see langword="null"/> when the
+    /// script cannot see it.
+    /// </summary>
+    /// <remarks>
+    /// A constructed generic cannot go through its <see cref="Type.FullName"/>: that is
+    /// <c>Slots`1[[Mat, OpenCvSharp, Version=…]]</c>, which no metadata name lookup matches. Its
+    /// definition is resolved instead and constructed over the resolved arguments, so a member's
+    /// signature reads in the concrete types the script actually uses. If an argument cannot be
+    /// resolved the definition is returned unconstructed — its members are still worth answering
+    /// with, in terms of <c>T</c>.
+    /// </remarks>
+    private static INamedTypeSymbol? ResolveNamedType(Compilation compilation, Type type)
+    {
+        if (!type.IsConstructedGenericType)
+        {
+            return type.FullName is { } fullName ? compilation.GetTypeByMetadataName(fullName) : null;
+        }
+
+        if (ResolveNamedType(compilation, type.GetGenericTypeDefinition()) is not { } definition)
+        {
+            return null;
+        }
+
+        var arguments = new ITypeSymbol[type.GenericTypeArguments.Length];
+
+        for (var i = 0; i < arguments.Length; i++)
+        {
+            if (ResolveTypeArgument(compilation, type.GenericTypeArguments[i]) is not { } argument)
+            {
+                return definition;
+            }
+
+            arguments[i] = argument;
+        }
+
+        return ConstructNested(definition, arguments) ?? definition;
+    }
+
+    /// <summary>
+    /// Constructs a generic definition, nested or not, from the flat argument list reflection
+    /// gives for it.
+    /// </summary>
+    /// <remarks>
+    /// Reflection lists a nested type's arguments outermost first, the containing types' included:
+    /// <c>Outer&lt;int&gt;.Inner&lt;string&gt;</c> has <c>[int, string]</c>, and
+    /// <c>Outer&lt;int&gt;.Plain</c> has <c>[int]</c> though <c>Plain</c> has no type parameters
+    /// of its own. Roslyn constructs one level at a time, each from its own arguments, so the
+    /// containing types are built first and each nested level is found inside the one before.
+    /// </remarks>
+    /// <returns>The constructed type, or <see langword="null"/> if the counts do not line up.</returns>
+    private static INamedTypeSymbol? ConstructNested(INamedTypeSymbol definition, ITypeSymbol[] arguments)
+    {
+        var levels = new Stack<INamedTypeSymbol>();
+
+        for (INamedTypeSymbol? level = definition; level is not null; level = level.ContainingType)
+        {
+            levels.Push(level);
+        }
+
+        INamedTypeSymbol? constructed = null;
+        var consumed = 0;
+
+        foreach (var level in levels)
+        {
+            var current = constructed is null
+                ? level
+                : constructed.GetTypeMembers(level.Name, level.Arity).FirstOrDefault();
+
+            if (current is null || consumed + level.Arity > arguments.Length)
+            {
+                return null;
+            }
+
+            constructed = level.Arity == 0
+                ? current
+                : current.Construct(arguments[consumed..(consumed + level.Arity)]);
+
+            consumed += level.Arity;
+        }
+
+        return consumed == arguments.Length ? constructed : null;
+    }
+
+    private static ITypeSymbol? ResolveTypeArgument(Compilation compilation, Type type)
+    {
+        if (type.IsArray && type.GetElementType() is { } elementType)
+        {
+            return ResolveTypeArgument(compilation, elementType) is { } element
+                ? compilation.CreateArrayTypeSymbol(element, type.GetArrayRank())
+                : null;
+        }
+
+        return ResolveNamedType(compilation, type);
     }
 
     private INamedTypeSymbol? FindDeclaredType(Compilation compilation, string name)
@@ -270,7 +366,7 @@ public sealed class RoslynSymbolResolver
     {
         foreach (var type in _rootTypes)
         {
-            if (type.FullName is { } fullName && compilation.GetTypeByMetadataName(fullName) is { } symbol)
+            if (ResolveNamedType(compilation, type) is { } symbol)
             {
                 yield return symbol;
             }
