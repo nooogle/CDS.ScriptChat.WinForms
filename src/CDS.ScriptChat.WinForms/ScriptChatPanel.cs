@@ -312,28 +312,39 @@ public partial class ScriptChatPanel : UserControl
 
         _logger.SendRequested(userMessage.Length, script.Length);
 
+        // The host may attach a different session while the turn is in flight — switching
+        // targets, or replacing them outright. The reply belongs to the session it was sent on,
+        // which records it either way; the transcript only shows it if that session is still the
+        // one attached.
+        var session = _session;
+
         try
         {
             AppendTurnToTranscript(
                 new ChatTurn(ChatTurnRole.User, userMessage, null, null, EditDisposition.None),
                 baselineScript: null);
 
-            var result = await _session.SendAsync(userMessage, script).ConfigureAwait(true);
-
-            var assistantTurn = _session.Turns[^1];
-            AppendTurnToTranscript(assistantTurn, baselineScript: script);
-
-            if (assistantTurn.Disposition == EditDisposition.PendingReview)
-            {
-                _pendingTurnIndex = _session.Turns.Count - 1;
-            }
-
-            SetStatus(ReadyStatusText);
+            var result = await session.SendAsync(userMessage, script).ConfigureAwait(true);
 
             _logger.SendCompleted(
                 stopwatch.ElapsedMilliseconds,
                 result.ProposedEdit,
                 result.SymbolsLookedUp.Count);
+
+            if (!ReferenceEquals(session, _session))
+            {
+                return;
+            }
+
+            var assistantTurn = session.Turns[^1];
+            AppendTurnToTranscript(assistantTurn, baselineScript: script);
+
+            if (assistantTurn.Disposition == EditDisposition.PendingReview)
+            {
+                _pendingTurnIndex = session.Turns.Count - 1;
+            }
+
+            SetStatus(ReadyStatusText);
         }
         catch (Exception ex)
         {
@@ -341,6 +352,12 @@ public partial class ScriptChatPanel : UserControl
             // handler would take the host app down, so it is surfaced and logged instead. The
             // transcript only gets ex.Message; the log is where the stack trace survives.
             _logger.SendFailed(ex, stopwatch.ElapsedMilliseconds);
+
+            if (!ReferenceEquals(session, _session))
+            {
+                return;
+            }
+
             AppendTurnToTranscript(
                 new ChatTurn(ChatTurnRole.Assistant, $"That turn failed: {ex.Message}", null, null, EditDisposition.None),
                 baselineScript: null);
