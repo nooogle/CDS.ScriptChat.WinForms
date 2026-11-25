@@ -82,6 +82,42 @@ public sealed class SamplePanel : SampleControlBase
 }
 
 /// <summary>
+/// A generic globals type — the shape a host ends up with when one globals class serves several
+/// settings types, so the root a resolver is handed is a constructed generic.
+/// </summary>
+/// <typeparam name="TSettings">The settings type.</typeparam>
+public sealed class SampleGenericGlobals<TSettings>
+    where TSettings : class, new()
+{
+    /// <summary>The settings the script reads.</summary>
+    public TSettings Settings { get; } = new();
+
+    /// <summary>A property whose own type is a constructed generic.</summary>
+    public SampleSlots<SamplePanel> Slots { get; } = new();
+
+    /// <summary>Puts the settings back to their defaults.</summary>
+    /// <returns>The settings.</returns>
+    public TSettings ResetSettings() => Settings;
+}
+
+/// <summary>A generic container a globals property hands out.</summary>
+/// <typeparam name="T">What each slot holds.</typeparam>
+public sealed class SampleSlots<T>
+{
+    /// <summary>Gets one slot's value.</summary>
+    /// <param name="index">The slot.</param>
+    /// <returns>Its value.</returns>
+    public T? Get(int index) => default;
+}
+
+/// <summary>Settings for <see cref="SampleGenericGlobals{TSettings}"/>.</summary>
+public sealed class SampleSettings
+{
+    /// <summary>A radius.</summary>
+    public int Radius { get; set; }
+}
+
+/// <summary>
 /// A flat domain API with no globals indirection — the shape of an app that has scripts but no
 /// globals type. <c>Describe</c> used to return an empty string for this, silently.
 /// </summary>

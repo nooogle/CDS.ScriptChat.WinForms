@@ -67,6 +67,30 @@ public sealed class RoslynSymbolResolverTests
     }
 
     [TestMethod]
+    public void Resolve_WithAConstructedGenericRoot_SearchesItsMembersInTheConcreteTypes()
+    {
+        // A constructed generic's FullName carries assembly-qualified type arguments, which no
+        // metadata name lookup matches — so the root used to be skipped silently.
+        var resolver = new RoslynSymbolResolver([TestNamespace], typeof(SampleGenericGlobals<SampleSettings>));
+
+        var result = resolver.Resolve(Compilation, "ResetSettings", containingType: null);
+
+        result.Should().NotBeNull();
+        result!.Signature.Should().Contain("SampleGenericGlobals<SampleSettings>.ResetSettings()");
+    }
+
+    [TestMethod]
+    public void Resolve_WithAGlobalsPropertyOfAConstructedGenericType_ResolvesToTheTypeBehindIt()
+    {
+        var resolver = new RoslynSymbolResolver([TestNamespace], typeof(SampleGenericGlobals<SampleSettings>));
+
+        var result = resolver.Resolve(Compilation, "Get", "Slots");
+
+        result.Should().NotBeNull();
+        result!.Signature.Should().Contain("SampleSlots<SamplePanel>.Get(int index)");
+    }
+
+    [TestMethod]
     public void Resolve_WithAWrongDeclaringType_FallsBackRatherThanReportingAMiss()
     {
         var result = CreateResolver().Resolve(Compilation, "SetValue", "SampleApi");
